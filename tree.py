@@ -1,7 +1,7 @@
 
 """ mutable tree data structure """
 from __future__ import print_function
-import inspect,importlib, pprint, pkgutil, string, re, os
+import inspect,importlib, pprint, pkgutil, string, re, os, uuid
 from weakref import WeakSet, WeakKeyDictionary, proxy
 from collections import OrderedDict, MutableSet
 from functools import partial, wraps
@@ -162,6 +162,7 @@ class Tree(object):
 
 	def __init__(self, name=None, val=None):
 		self._name = name
+		self._uuid = None
 		self._parent = None
 		self._value = val
 		self.valueChanged = Signal()
@@ -188,11 +189,19 @@ class Tree(object):
 		self._setName(val)
 
 	@property
+	def uuid(self):
+		""" no idea if this is used correctly here """
+		if not self._uuid:
+			self._uuid = uuid.uuid4()
+		return self._uuid
+
+	@property
 	def parent(self):
 		""":rtype AbstractTree"""
 		return self._parent
 	@parent.setter
 	def parent(self, val):
+		""" this should be removed, addChild is the correct way to do it """
 		self._setParent(val)
 
 	@property
@@ -266,7 +275,8 @@ class Tree(object):
 	def get(self, lookup, default=None):
 		""" same implementation as normal dict
 		addresses will recurse into child branches
-		duplication here from main address system, fix it """
+		duplication here from main address system, fix it
+		RETURNS VALUE"""
 		if isinstance(lookup, basestring):
 			lookup = lookup.split(separator)
 		name = lookup.pop(0)
@@ -274,7 +284,7 @@ class Tree(object):
 			return default
 		if lookup:
 			return self._map[name].get(lookup)
-		return self._map[name]
+		return self._map[name].value
 
 
 	def index(self, lookup=None, *args, **kwargs):
@@ -316,7 +326,8 @@ class Tree(object):
 
 	def allBranches(self, includeSelf=True):
 		""" returns list of all tree objects
-		depth first """
+		depth first
+		:returns [Tree]"""
 		found = [ self ] if includeSelf else []
 		#found = [ self ]
 		for i in self.branches:
@@ -405,16 +416,29 @@ class Tree(object):
 
 	def __call__(self, address):
 		""" allows lookups of string form "root.branchA.leaf"
+
+		tree[45] = "test"
+		tree.parent["tree.45"]
+		????????????????????
+		should it just be coerced to string every time?
+		yes
+
 		:returns AbstractTree
 		:rtype AbstractTree"""
-		#debug(address)
-		if isinstance(address, basestring): # if you look up [""] this will break
-			address = str(address).split(separator) # effectively maya attribute syntax
-		elif isinstance(address, (list, tuple)): # already split
-			pass
+		print("address {}".format(address))
 		if not address: # empty list
 			return self
+		if isinstance(address, (list, tuple)):
+			pass
+		# elif isinstance(address, basestring):
+		else:
+			address = str(address).split(separator)
+
+		# all input coerced to list
 		first = address.pop(0)
+		# MAY STILL BE INT TYPE
+
+
 		if first == parentToken: # aka unix ../
 			return self.parent(address)
 		if not first in self._map: # add it if doesn't exist
@@ -446,6 +470,7 @@ class Tree(object):
 		return tree
 
 	def __deepcopy__(self):
+		""":returns Tree"""
 		return self.fromDict(self.serialise())
 
 
@@ -465,20 +490,29 @@ class Tree(object):
 		self.parent._map = newMap
 
 
+	def searchReplace(self, searchFor=None, replaceWith=None,
+	                  names=True, values=True, recurse=True):
+		"""checks over raw string names and values and replaces"""
+		branches = self.allBranches(True) if recurse else [self]
+		for branch in branches:
+			if names:
+				branch.name = str(branch.name).replace(searchFor, replaceWith)
+			if values:
+				branch.value = str(branch.value).replace(searchFor, replaceWith)
+
+
 	### basic hashing system, after stackOverflow
 	# def __key(self):
-	# 	debug(self)
 	# 	return (self._name, str(self._value), self._map)
 	#
-	# def __hash__(self):
-	# 	return hash(self.__key())
-	#
 	# def __eq__(self, other):
-	# 	if isinstance(other, AbstractTree):
+	# 	if isinstance(other, Tree):
 	# 		return self.__key() == other.__key()
 	# 	return NotImplemented
 
-	#def __copy__(self):
+	def __hash__(self):
+		return hash(self.uuid)
+
 
 	@classmethod
 	def fromDict(cls, regenDict):

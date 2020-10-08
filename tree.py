@@ -161,7 +161,7 @@ class Tree(object):
 	branchesInherit = False
 
 	def __init__(self, name=None, val=None):
-		self._name = name
+		self._name = str(name) if name else None
 		self._uuid = None
 		self._parent = None
 		self._value = val
@@ -186,7 +186,7 @@ class Tree(object):
 	@name.setter
 	def name(self, val):
 		""" update parent map """
-		self._setName(val)
+		self._setName(str(val))
 
 	@property
 	def uuid(self):
@@ -423,9 +423,12 @@ class Tree(object):
 		should it just be coerced to string every time?
 		yes
 
+		current system allows lookups by int type,
+		but internally all keys are str, and when queried return str.
+
 		:returns AbstractTree
 		:rtype AbstractTree"""
-		print("address {}".format(address))
+		#print("address {}".format(address))
 		if not address: # empty list
 			return self
 		if isinstance(address, (list, tuple)):
@@ -435,8 +438,7 @@ class Tree(object):
 			address = str(address).split(separator)
 
 		# all input coerced to list
-		first = address.pop(0)
-		# MAY STILL BE INT TYPE
+		first = str(address.pop(0))
 
 
 		if first == parentToken: # aka unix ../
@@ -548,7 +550,8 @@ class Tree(object):
 			branch = cls.fromDict(i)
 			if branch is None:
 				continue
-			new.addChild(branch)
+			# replace existing (default) branches declared in init
+			new.addChild(branch, force=True)
 		return new
 
 

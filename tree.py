@@ -277,6 +277,12 @@ class Tree(object):
 		addresses will recurse into child branches
 		duplication here from main address system, fix it
 		RETURNS VALUE"""
+		if isinstance(lookup, (list, tuple)):
+			result = None
+			for i in lookup:
+				result = result or self.get(i, None)
+			return result or default
+
 		if isinstance(lookup, basestring):
 			lookup = lookup.split(separator)
 		name = lookup.pop(0)

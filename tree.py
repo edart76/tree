@@ -198,7 +198,7 @@ class Tree(object):
 	@property
 	def parent(self):
 		""":rtype AbstractTree"""
-		return self._parent
+		return self._parent #type AbstractTree
 	@parent.setter
 	def parent(self, val):
 		""" this should be removed, addChild is the correct way to do it """
@@ -248,13 +248,12 @@ class Tree(object):
 		if branch in self.branches:
 			print("cannot add existing branch, named " + branch.name)
 			return branch
-		if branch.name in self.keys():
+		while branch.name in self.keys():
 			if force: # override old branch with new
-				pass
+				break
 			else:
 				print("cannot add duplicate child of name {}".format(branch.name))
-				newName = incrementName(branch.name, currentNames=self.keys())
-				branch._setName(newName)
+				branch._setName(incrementName(branch.name))
 
 		if index is None:
 			self._map[branch.name] = branch
@@ -272,12 +271,24 @@ class Tree(object):
 		return branch
 
 
+	def getBranch(self, lookup, default=None):
+		""" returns branch object if it exists or default """
+		if isinstance(lookup, basestring):
+			lookup = lookup.split(separator)
+		name = lookup.pop(0)
+		if name not in self._map.keys():
+			return default
+		if lookup:
+			return self._map[name].getBranch(lookup)
+		return self._map[name]
+
 	def get(self, lookup, default=None):
 		""" same implementation as normal dict
 		addresses will recurse into child branches
 		duplication here from main address system, fix it
 		RETURNS VALUE"""
-		if isinstance(lookup, (list, tuple)):
+		#if isinstance(lookup, (list, tuple)):
+		if hasattr(lookup, "__iter__"):
 			result = None
 			for i in lookup:
 				result = result or self.get(i, None)
@@ -349,7 +360,7 @@ class Tree(object):
 		# else:
 		return self.parent.getAddress(prev=path)
 
-	def search(self, path, onlyChildren=True, found=None):
+	def search(self, path, onlyChildren=True):
 		""" searches branches for trees matching a partial path,
 		and returns ALL THAT MATCH
 		so for a tree
@@ -385,7 +396,7 @@ class Tree(object):
 		if self.parent:
 			newDict = OrderedDict()
 			oldName = self._name
-			name = self.parent.getValidName(name)
+			name = incrementName(name, self.parent.keys())
 			for k, v in self.parent.iterBranches():
 				if k == oldName:
 					newDict[name] = self
@@ -480,6 +491,15 @@ class Tree(object):
 	def __deepcopy__(self):
 		""":returns Tree"""
 		return self.fromDict(self.serialise())
+
+	def __iter__(self):
+		""""""
+		return self._map.__iter__()
+
+	def __contains__(self, item):
+		if isinstance(item, Tree):
+			return item in self._map.values()
+		return self._map.__contains__(item)
 
 
 	def setIndex(self, index):

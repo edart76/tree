@@ -23,6 +23,7 @@ class FileTree(Tree):
 	newDir is None - by default nothing is created
 	>>>realNewDir = fileTreeA("crazyPath", create=True)
 	F:/root_dir/crazyPath folder is created
+
 	"""
 
 	def __init__(self, rootDir):

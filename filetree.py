@@ -1,10 +1,14 @@
 
 
-from tree import Tree
+
 from collections import namedtuple
+import os, shutil
+from os import PathLike
 
 
-class FileTree(Tree):
+from main import Tree
+
+class FileTree(Tree, PathLike):
 	""" tree object for interfacing with files on disk
 	read only for now
 
@@ -26,9 +30,13 @@ class FileTree(Tree):
 
 	"""
 
-	def __init__(self, rootDir):
-		""":param rootDir : path of root directory for tree """
-		super(FileTree, self).__init__(name="ROOT", val=rootDir)
+	def __init__(self, dirPath):
+		""":param dirPath : path of root directory for tree """
+		super(FileTree, self).__init__(name="ROOT", val=dirPath)
+
+	def __fspath__(self):
+		""" return the absolute path to this branch """
+		return os.path.join(self.rootPath, self.address)
 
 	@property
 	def rootPath(self):

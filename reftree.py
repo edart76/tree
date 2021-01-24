@@ -1,4 +1,4 @@
-from tree import Tree
+from main import Tree
 
 class RefTree(Tree):
 	"""

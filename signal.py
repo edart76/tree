@@ -1,0 +1,79 @@
+
+from sys import version_info
+if version_info[0] < 3: # hacky 2-3 compatibility
+	pyTwo = True
+else:
+	pyTwo = False
+
+
+import inspect
+from weakref import WeakSet, WeakKeyDictionary
+from collections import deque
+
+
+
+
+class Signal(object):
+	""" basic signal emitter
+	fired signals are added to this object's calling frame -
+	if this becomes excessive, this
+	also includes mode to add function calls to queue
+	instead of directly firing connnected functions
+
+	queue support not complete yet, as nothing I use needs it.
+	"""
+	
+	queues = {"default" : deque()}
+	
+	def __init__(self):
+		self._functions = WeakSet()
+		self._methods = WeakKeyDictionary()
+
+		# event queue support
+		self._queue = None
+
+	def __call__(self, *args, **kargs):
+		# Call handler functions
+		for func in self._functions:
+			func(*args, **kargs)
+
+		# Call handler methods
+		for obj, funcs in self._methods.items():
+			for func in funcs:
+				func(obj, *args, **kargs)
+
+	def getQueue(self, name="default", create=True):
+		"""return one of the event queues attended by signal objects"""
+		name = name or self._queue or "default"
+		if not name in self.queues and create:
+			self.queues[name] = deque()
+		return self.queues[name]
+
+	def setQueue(self, queueName):
+		""" set signal to use given queue """
+		self._queue = queueName
+
+	def emit(self, *args, **kwargs):
+		""" brings this object up to rough parity with qt signals """
+		self(*args, **kwargs)
+
+	def connect(self, slot):
+		if inspect.ismethod(slot):
+			if slot.__self__ not in self._methods:
+				self._methods[slot.__self__] = set()
+
+			self._methods[slot.__self__].add(slot.__func__)
+		else:
+			self._functions.add(slot)
+
+	def disconnect(self, slot):
+		if inspect.ismethod(slot):
+			if slot.__self__ in self._methods:
+				self._methods[slot.__self__].remove(slot.__func__)
+		else:
+			if slot in self._functions:
+				self._functions.remove(slot)
+
+	def clear(self):
+		self._functions.clear()
+		self._methods.clear()

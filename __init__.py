@@ -1,2 +1,5 @@
 
-from tree import Tree
+from .main import Tree
+from .signal import Signal
+__all__ = ["Tree", "Signal"]
+

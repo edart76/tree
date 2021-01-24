@@ -3,7 +3,7 @@ import copy
 from collections import OrderedDict
 import inspect
 
-from tree import Tree
+from main import Tree
 
 """ so it turns out this is really hard """
 
@@ -14,6 +14,12 @@ while comparing to given base object
 2 problems must be solved:
  - how do we deal with complex and deep objects
  - how do we make a mask of a mask
+ 
+proxy actually has two components:
+ - list of (mutable) transformations to perform on data from base object
+ - end interface for accessing that data
+
+the delta-tracking behaviour would be a type of transformation
 """
 
 
@@ -38,7 +44,11 @@ class CallWrapper(object):
 class Proxy(object):
 	""" Transparent proxy for most objects
 	code recipe 496741
-	further modifications by ya boi """
+	further modifications by ya boi
+
+	terminology:
+
+	"""
 	#__slots__ = ["_obj", "__weakref__"]
 	_class_proxy_cache = {} # { class : { class cache } }
 	_proxyAttrs = ("_proxyObjRef", "_proxyObj", "_proxyDepth")
@@ -164,6 +174,7 @@ class Delta(Proxy):
 	               "_baseObj", "_mask")
 
 	def __init__(self, obj):
+		super(Delta, self).__init__(obj)
 		self._baseObj = obj # reference to base object to draw from
 		self._proxyObjRef = copy.copy(obj)
 		self._mask = { "added" : {}, "modified" : {}, "removed" : {} }
@@ -198,32 +209,32 @@ class Delta(Proxy):
 		pass
 
 
-class DictDelta(Delta):
-	def _extractMask(self, proxyObj=None):
-		self._mask["added"] = {
-			pK : pV for pK, pV in self._proxyObj.iteritems() if \
-				pK not in self._baseObj }
-		self._mask["modified"] = {
-			pK : pV for pK, pV in self._proxyObj.iteritems() if \
-				self._baseObj.get(pK) != pV }
-		# added and modified functionally the same here
-
-	def applyMask(self, newObj=None):
-		self._proxyObj.update(self._mask["added"])
-		self._proxyObj.update(self._mask["modified"])
-
-class ListDelta(Delta):
-	""" basic, indices not working """
-	def _extractMask(self):
-		self._mask["added"] = {
-			self._proxyObj.index(i) : i for i in self._proxyObj \
-				if not i in self._baseObj }
-	def applyMask(self, newObj=None):
-		for index, val in self._mask["added"]:
-			try:
-				self._proxyObj.insert(index, val)
-			except:
-				self._proxyObj.append(val)
+# class DictDelta(Delta):
+# 	def _extractMask(self, proxyObj=None):
+# 		self._mask["added"] = {
+# 			pK : pV for pK, pV in self._proxyObj.iteritems() if \
+# 				pK not in self._baseObj }
+# 		self._mask["modified"] = {
+# 			pK : pV for pK, pV in self._proxyObj.iteritems() if \
+# 				self._baseObj.get(pK) != pV }
+# 		# added and modified functionally the same here
+#
+# 	def applyMask(self, newObj=None):
+# 		self._proxyObj.update(self._mask["added"])
+# 		self._proxyObj.update(self._mask["modified"])
+#
+# class ListDelta(Delta):
+# 	""" basic, indices not working """
+# 	def _extractMask(self):
+# 		self._mask["added"] = {
+# 			self._proxyObj.index(i) : i for i in self._proxyObj \
+# 				if not i in self._baseObj }
+# 	def applyMask(self, newObj=None):
+# 		for index, val in self._mask["added"]:
+# 			try:
+# 				self._proxyObj.insert(index, val)
+# 			except:
+# 				self._proxyObj.append(val)
 
 class TreeDelta(Delta):
 	""" final boss """
@@ -321,7 +332,6 @@ testTree("parent.childA").extras["options"] = (930, "eyyy")
 
 if __name__ == '__main__':
 
-	debug(testTree)
 	proxyTree = TreeDelta(testTree)
 
 	proxyTree["proxyKey"] = "w e w _ l a d"
@@ -334,7 +344,6 @@ if __name__ == '__main__':
 
 	print(proxyTree.display())
 	print(testTree.display())
-	debug(proxyTree._mask)
 
 
 

@@ -24,4 +24,6 @@ anytree : anytree.readthedocs.io/en/latest/intro.html
  - quite class-heavy
  - fun methods for pretty-printing tree contents
 Disney's dRig : https://media.disneyanimation.com/uploads/production/publication_asset/7/asset/dRigTalk_v05.pdf
- - allows live inheritance and overrides
+ - allows live inheritance and overrides by ancestor lookup or by layers
+NXT :
+ - very interesting

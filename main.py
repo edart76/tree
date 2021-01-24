@@ -1,151 +1,23 @@
 
 """ mutable tree data structure """
 from __future__ import print_function
-import inspect,importlib, pprint, pkgutil, string, re, os, uuid
-from weakref import WeakSet, WeakKeyDictionary, proxy
-from collections import OrderedDict, MutableSet
-from functools import partial, wraps
-from abc import ABCMeta
-import types
+from sys import version_info
 
-class Signal(object):
-	def __init__(self):
-		self._functions = WeakSet()
-		self._methods = WeakKeyDictionary()
+from tree.lib import incrementName, saveObjectClass, loadObjectClass
 
-	def __call__(self, *args, **kargs):
-		# Call handler functions
-		for func in self._functions:
-			func(*args, **kargs)
-
-		# Call handler methods
-		for obj, funcs in self._methods.items():
-			for func in funcs:
-				func(obj, *args, **kargs)
-
-	def emit(self, *args, **kwargs):
-		""" brings this object up to parity with qt """
-		self(*args, **kwargs)
-
-	def connect(self, slot):
-		if inspect.ismethod(slot):
-			if slot.__self__ not in self._methods:
-				self._methods[slot.__self__] = set()
-
-			self._methods[slot.__self__].add(slot.__func__)
-		else:
-			self._functions.add(slot)
-
-	def disconnect(self, slot):
-		if inspect.ismethod(slot):
-			if slot.__self__ in self._methods:
-				self._methods[slot.__self__].remove(slot.__func__)
-		else:
-			if slot in self._functions:
-				self._functions.remove(slot)
-
-	def clear(self):
-		self._functions.clear()
-		self._methods.clear()
+if version_info[0] < 3: # hacky 2-3 compatibility
+	pyTwo = True
+else:
+	pyTwo = False
+	basestring = str
 
 
-def rawToList(listString):
-	""" given any raw input string of form [x, 1, ["ed", w] ]
-	coerces string values to ints and floats and runs recursively on interior lists
-	"""
-	tokens = [i.strip() for i in listString[1:-1].split(",")]
-	result = []
-	for token in tokens:
-		try:
-			result.append(eval(token))
-		except:
-			result.append(str(token))
+import pprint, uuid
+from collections import OrderedDict
+from tree.signal import Signal
 
-	return result
-
-
-def incrementName(name, currentNames=None):
-	"""checks if name is already in children, returns valid one"""
-	if currentNames and name not in currentNames:
-		return name
-	if name[-1].isdigit(): # increment digit like basic bitch
-		new = int(name[-1]) + 1
-		return name[:-1] + str(new)
-	if name[-1] in string.ascii_uppercase: # ends with capital letter
-		if name[-1] == "Z": # start over
-			name += "A"
-		else: # increment with letter, not number
-			index = string.ascii_uppercase.find(name[-1])
-			name = name[:-1] + string.ascii_uppercase[index+1]
-	else: # ends with lowerCase letter
-		name += "B"
-
-	# check if name already taken
-	if currentNames and name in currentNames:
-		return incrementName(name, currentNames)
-	return name
-
-def safeLoadModule(mod, logFunction=None):
-	"""takes string name of module
-	"""
-	logFunction = logFunction or print
-	module = None
-	try:
-		module = importlib.import_module(mod)
-	except ImportError() as e:
-		logFunction("ERROR in loading module {}".format(mod))
-		logFunction("error is {}".format(str(e)))
-	return module
 
 uniqueSign = "|@|" # something that will never appear in file path
-def saveObjectClass(obj, regenFunc="fromDict", relative=True, uniqueKey=True,
-					legacy=False):
-	""" saves a module and class reference for any object
-	if relative, will return path from root folder"""
-	keys = [ "NAME", "CLASS", "MODULE", "regenFn" ]
-	if uniqueKey: # not always necessary
-		for i in range(len(keys)): keys[i] = "?" + keys[i]
-
-	#path = convertRootPath(obj.__class__.__module__, toRelative=relative)
-	path = obj.__class__.__module__
-	if legacy: # old inefficient dict method
-		return {
-			keys[0]: obj.__name__,
-			keys[1]: obj.__class__.__name__,
-			keys[2]: path,
-			keys[3]: regenFunc
-		}
-	data = uniqueSign.join([obj.__class__.__name__, path])
-	return data
-
-def loadObjectClass(objData):
-	""" recreates a class object from any known module """
-	if isinstance(objData, dict):
-		for i in ("?MODULE", "?CLASS"):
-			if not objData.get(i):
-				print("objectData {} has no key {}, cannot reload class".format(objData, i))
-				return None
-		path = objData["?MODULE"]
-		className = objData["?CLASS"]
-
-	elif isinstance(objData, (tuple, list)):
-		# sequence [ class, modulepath, regenFn ]
-		path = objData[1]
-		className = objData[0]
-	elif isinstance(objData, basestring):
-		className, path = objData.split(uniqueSign)
-
-	#module = convertRootPath( path, toAbsolute=True)
-	module = path
-	loadedModule = safeLoadModule(module)
-	try:
-		newClass = getattr(loadedModule, className)
-		return newClass
-	except Exception as e:
-		print("ERROR in reloading class {} from module {}")
-		print("has it moved, or module files been shifted?")
-		print( "error is {}".format(str(e)) )
-		return None
 
 ####### THE MAIN EVENT ########
 """ there is the capability to change the separator token used by
@@ -153,23 +25,52 @@ tree addresses - I don't know the best way to do that, short of making
 it an instance attribute """
 separator = "."
 # separator = "/"
-parentToken = "^"
+parentToken = "^" # directs to the tree's parent
 # parentToken = ".."
 class Tree(object):
 	"""fractal tree-like data structure
-	each branch having both name and value"""
+	each branch having both name and value
+
+	extras is unordered dict of any random auxiliary information.
+
+	tree addressing was originally inspired by maya attribute syntax,
+	expecting string of "a.b.c" etc
+
+	recently come to see that this is not always ideal, and not sure how
+	best to fix it.
+
+	"""
 	branchesInherit = False
+
+	debugOn = False
+
+	class StructureEvents(object):
+		""" very janky enum-like"""
+		branchAdded = 1
+		branchRemoved = 2
+		branchRenamed = 3
+
+	# keys in extras that play important roles
+	extraKeys = ("default", "readOnly", "active", "breakpoint")
 
 	def __init__(self, name=None, val=None):
 		self._name = str(name) if name else None
 		self._uuid = None
 		self._parent = None
 		self._value = val
-		self.valueChanged = Signal()
-		self.structureChanged = Signal()
-		self._map = OrderedDict()
+
+		self._branchMap = OrderedDict()
 		self.extras = {}
 		self.overrides = {}
+
+		# separator used to join string addresses
+		self.separator = separator
+
+		# signals
+		# valueChanged signature: branch, oldValue, newValue
+		self.valueChanged = Signal()
+		# structureChanged signature: branch, parent, event code
+		self.structureChanged = Signal()
 
 		# read-only attr
 		self.readOnly = False
@@ -216,25 +117,144 @@ class Tree(object):
 		consider possibly denoting arbitrary points in tree as breakpoints,
 		roots only to branches under them """
 		return self.parent.root if self.parent else self
+
+	@property
+	def leaves(self):
+		"""returns branches under this branch
+		which do not have branches of their own"""
+		return [i for i in self.allBranches(False) if not i.branches]
+
 	@property
 	def address(self):
-		return self.getAddress()
+		return self._address()
+
+	@property
+	def default(self):
+		return self.extras.get("default")
+	@default.setter
+	def default(self, val):
+		self.extras["default"] = val
 
 	@property
 	def value(self):
+		if self._value is None and "default" in self.extras:
+			self._value = self.extras["default"]
 		return self._value
 	@value.setter
 	def value(self, val):
 		oldVal = self._value
 		self._value = val
 		if oldVal != val:
-			self.valueChanged(self)
+			self.valueChanged(self, oldValue=oldVal, newValue=val)
 
 	@property
 	def branches(self):
 		"""more explicit that it returns the child tree objects
 		:rtype list( AbstractTree )"""
 		return self.values()
+
+	def debug(self, info):
+		if self.debugOn:
+			print(info)
+
+	def __getitem__(self, address):
+		""" allows lookups of string form "root.branchA.leaf"
+		"""
+		return self(address).value
+
+	def __setitem__(self, key, value):
+		""" assuming that setting tree values is far more frequent than
+		setting actual tree objects """
+		self(key).value = value
+
+	def __call__(self, *address, **kwargs):
+		""" allows lookups of string form "root.branchA.leaf"
+		kwargs will be passed to extras
+
+		tree[45] = "test"
+		tree.parent["tree.45"]
+		????????????????????
+		should it just be coerced to string every time?
+		yes
+
+		current system allows lookups by int type,
+		but internally all keys are str, and when queried return str.
+
+		:returns AbstractTree
+		:rtype AbstractTree"""
+
+		self.debug(address)
+
+		if len(address) == 1:
+			address = address[0]
+
+		if not address: # empty list
+			return self
+		if isinstance(address, (list, tuple)):
+			address = list(address)
+			pass
+		# elif isinstance(address, basestring):
+		else:
+			address = str(address).split(separator)
+
+		# all input coerced to list
+		first = str(address.pop(0))
+
+		if first == parentToken: # aka unix ../
+			return self.parent(address)
+		if not first in self._branchMap: # add it if doesn't exist
+			if self.readOnly:
+				raise RuntimeError( "readOnly tree accessed improperly - "
+									"no address {}".format(first))
+			# check if branch should inherit directly, or
+			# remain basic tree object
+			if self.branchesInherit:
+				obj = self.__class__(first, None)
+			else:
+				obj = self._defaultCls()(first, None)
+			# set extras from given keys - need better mechanism to this
+			for key in self.extraKeys:
+				if key in kwargs:
+					obj.extras[key] = kwargs[key]
+
+			branch = self.addChild(obj)
+			
+			# if a new branch has been created on the final item,
+			# set its value
+			# eg tree("a", "b", value=2) ->
+			# final branch b has its value set if created
+			
+
+		else: # branch name might be altered
+			branch = self._branchMap[first]
+		return branch(*address)
+
+
+	def __repr__(self):
+		return "<{} ({}) : {}>".format(self.__class__, self.name, self.value)
+
+	def __copy__(self):
+		""" create shallow copy of this tree -
+		new tree object, new internal map, same
+		tree objects in map """
+		tree = self.__class__(self.name)
+		if self.value is not None:
+			tree.value = type(self.value)(self.value)
+		tree._branchMap = OrderedDict(self._branchMap)
+		return tree
+
+	def __deepcopy__(self):
+		""":returns Tree"""
+		return self.fromDict(self.serialise())
+
+	def __iter__(self):
+		""""""
+		return self._branchMap.__iter__()
+
+	def __contains__(self, item):
+		if isinstance(item, Tree):
+			return item in self._branchMap.values()
+		return self._branchMap.__contains__(item)
 
 
 	def _setParent(self, tree):
@@ -256,18 +276,20 @@ class Tree(object):
 				branch._setName(incrementName(branch.name))
 
 		if index is None:
-			self._map[branch.name] = branch
+			self._branchMap[branch.name] = branch
 		else: # more complex ordered dict management
 			newMap = OrderedDict()
-			oldBranches = self._map.values()
+			oldBranches = self._branchMap.values()
 			if index > len(oldBranches) - 1:
 				index = len(oldBranches)
 			oldBranches.insert(index, branch)
 			for newBranch in oldBranches:
 				newMap[newBranch.name] = newBranch
-			self._map = newMap
+			self._branchMap = newMap
 		branch._setParent(self)
-		self.structureChanged()
+
+		# emit signal
+		self.structureChanged(branch, self, self.StructureEvents.branchAdded)
 		return branch
 
 
@@ -276,11 +298,11 @@ class Tree(object):
 		if isinstance(lookup, basestring):
 			lookup = lookup.split(separator)
 		name = lookup.pop(0)
-		if name not in self._map.keys():
+		if name not in self._branchMap.keys():
 			return default
 		if lookup:
-			return self._map[name].getBranch(lookup)
-		return self._map[name]
+			return self._branchMap[name].getBranch(lookup)
+		return self._branchMap[name]
 
 	def get(self, lookup, default=None):
 		""" same implementation as normal dict
@@ -297,18 +319,25 @@ class Tree(object):
 		if isinstance(lookup, basestring):
 			lookup = lookup.split(separator)
 		name = lookup.pop(0)
-		if name not in self._map.keys():
+		if name not in self._branchMap.keys():
 			return default
 		if lookup:
-			return self._map[name].get(lookup)
-		return self._map[name].value
+			return self._branchMap[name].get(lookup)
+		return self._branchMap[name].value
+
+	def getInherited(self, lookup, default=None):
+		""" searches this branch and all ancestors for occurrences
+		of lookup, then returns its value """
+		return self.get(lookup,
+		                self.parent.getInherited(lookup, default)
+			if self.parent else default)
 
 
 	def index(self, lookup=None, *args, **kwargs):
 		if lookup is None: # get tree's own index
 			return self.ownIndex()
-		if lookup in self._map.keys():
-			return self._map.keys().index(lookup, *args, **kwargs)
+		if lookup in self._branchMap.keys():
+			return self._branchMap.keys().index(lookup, *args, **kwargs)
 		else:
 			return -1
 
@@ -324,41 +353,46 @@ class Tree(object):
 			index += self.parent.flattenedIndex()
 		return index
 
-
-
 	def items(self):
-		return self._map.items()
+		return self._branchMap.items()
 
 	def values(self):
-		return self._map.values()
+		return self._branchMap.values()
 
 	def keys(self):
-		return self._map.keys()
+		return self._branchMap.keys()
 
 	def iteritems(self):
-		return zip(self._map.keys(), [i.value for i in self._map.values()])
+		return zip(self._branchMap.keys(),
+		           [i.value for i in self._branchMap.values()]
+		           )
 
 	def iterBranches(self):
-		return self._map.iteritems()
+		return self._branchMap.iteritems()
 
 	def allBranches(self, includeSelf=True):
 		""" returns list of all tree objects
 		depth first
 		:returns [Tree]"""
 		found = [ self ] if includeSelf else []
-		#found = [ self ]
 		for i in self.branches:
 			found.extend(i.allBranches())
 		return found
 
-	def getAddress(self, prev=""):
+	def _address(self, prev=None):
 		"""returns string path from root to this tree
-		does not include root"""
+		does not include root
+		return list of string addresses
+		"""
+		prev = prev or []
 		if self.root == self:
 			return prev
-		path = separator.join( (self.name, prev) ) if prev else self.name
-		# else:
-		return self.parent.getAddress(prev=path)
+		prev.insert(0, self.name)
+		return self.parent._address(prev=prev)
+
+	def stringAddress(self):
+		""" returns the address sequence joined by the tree separator """
+		return separator.join(self.address)
 
 	def search(self, path, onlyChildren=True):
 		""" searches branches for trees matching a partial path,
@@ -402,104 +436,25 @@ class Tree(object):
 					newDict[name] = self
 					continue
 				newDict[k] = v
-			self.parent._map = newDict
+			self.parent._branchMap = newDict
 		self._name = name
-		self.structureChanged()
+		self.structureChanged(self, self.parent, self.StructureEvents.branchRenamed)
 		return name
 
 	def remove(self, address=None):
 		"""removes address, or just removes the tree if no address is given"""
 		if not address:
 			if self.parent:
-				self.parent._map.pop(self.name)
-				#self.structureChanged()
-				self.parent.structureChanged()
+				self.parent._branchMap.pop(self.name)
+
+				self.parent.structureChanged(self, self.parent,
+				                             self.StructureEvents.branchRemoved)
 				return self
 		branch = self(address)
 		branch.remove()
-		branch.parent.structureChanged()
+		branch.parent.structureChanged(branch, branch.parent,
+		                               self.StructureEvents.branchRemoved)
 		return branch
-
-
-	def __getitem__(self, address):
-		""" allows lookups of string form "root.branchA.leaf"
-		"""
-		return self(address).value
-
-	def __setitem__(self, key, value):
-		""" assuming that setting tree values is far more frequent than
-		setting actual tree objects """
-		self(key).value = value
-
-	def __call__(self, address):
-		""" allows lookups of string form "root.branchA.leaf"
-
-		tree[45] = "test"
-		tree.parent["tree.45"]
-		????????????????????
-		should it just be coerced to string every time?
-		yes
-
-		current system allows lookups by int type,
-		but internally all keys are str, and when queried return str.
-
-		:returns AbstractTree
-		:rtype AbstractTree"""
-		#print("address {}".format(address))
-		if not address: # empty list
-			return self
-		if isinstance(address, (list, tuple)):
-			pass
-		# elif isinstance(address, basestring):
-		else:
-			address = str(address).split(separator)
-
-		# all input coerced to list
-		first = str(address.pop(0))
-
-
-		if first == parentToken: # aka unix ../
-			return self.parent(address)
-		if not first in self._map: # add it if doesn't exist
-			if self.readOnly:
-				raise RuntimeError( "readOnly tree accessed improperly - "
-									"no address {}".format(first))
-			# check if branch should inherit directly, or
-			# remain basic tree object
-			if self.branchesInherit:
-				obj = self.__class__(first, None)
-			else:
-				obj = self._defaultCls()(first, None)
-			branch = self.addChild(obj)
-		else: # branch name might be altered
-			branch = self._map[first]
-		return branch(address)
-
-	def __repr__(self):
-		return "<{} ({}) : {}>".format(self.__class__, self.name, self.value)
-
-	def __copy__(self):
-		""" create shallow copy of this tree -
-		new tree object, new internal map, same
-		tree objects in map """
-		tree = self.__class__(self.name)
-		if self.value is not None:
-			tree.value = type(self.value)(self.value)
-		tree._map = OrderedDict(self._map)
-		return tree
-
-	def __deepcopy__(self):
-		""":returns Tree"""
-		return self.fromDict(self.serialise())
-
-	def __iter__(self):
-		""""""
-		return self._map.__iter__()
-
-	def __contains__(self, item):
-		if isinstance(item, Tree):
-			return item in self._map.values()
-		return self._map.__contains__(item)
 
 
 	def setIndex(self, index):
@@ -510,12 +465,12 @@ class Tree(object):
 		if index < 0: # ?
 			index = len(self.siblings) + index
 		newMap = OrderedDict()
-		oldKeys = self.parent._map.keys()
+		oldKeys = self.parent._branchMap.keys()
 		oldKeys.remove(self.name)
 		oldKeys.insert(index, self.name)
 		for key in oldKeys:
-			newMap[key] = self.parent._map[key]
-		self.parent._map = newMap
+			newMap[key] = self.parent._branchMap[key]
+		self.parent._branchMap = newMap
 
 
 	def searchReplace(self, searchFor=None, replaceWith=None,
@@ -531,7 +486,7 @@ class Tree(object):
 
 	### basic hashing system, after stackOverflow
 	# def __key(self):
-	# 	return (self._name, str(self._value), self._map)
+	# 	return (self._name, str(self._value), self._branchMap)
 	#
 	# def __eq__(self, other):
 	# 	if isinstance(other, Tree):
@@ -555,8 +510,7 @@ class Tree(object):
 		# check first for a saved class or module name
 		objData = regenDict.get("objData") or {}
 		if objData:
-			cls = loadObjectClass( objData )
-			cls = cls or cls._defaultCls()
+			cls = loadObjectClass(objData) or cls._defaultCls()
 
 		# if branch is same type as parent, no info needed
 		# a tree of one type will mark all branches as same type
@@ -588,7 +542,7 @@ class Tree(object):
 		if self.value:
 			serial["?VALUE"] = self.value
 		if self.branches:
-			serial["?CHILDREN"] = [i.serialise() for i in self._map.values()]
+			serial["?CHILDREN"] = [i.serialise() for i in self._branchMap.values()]
 		if self.extras:
 			serial["?EXTRAS"] = self.extras
 		if self.parent:

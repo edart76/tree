@@ -3,30 +3,37 @@
 from __future__ import print_function
 from sys import version_info
 
-from tree.lib import incrementName, saveObjectClass, loadObjectClass
-
-if version_info[0] < 3: # hacky 2-3 compatibility
-	pyTwo = True
-else:
-	pyTwo = False
-	basestring = str
-
+from tree.lib import incrementName, saveObjectClass, loadObjectClass, \
+	uniqueSign
 
 import pprint, uuid
 from collections import OrderedDict
 from tree.signal import Signal
 
 
-uniqueSign = "|@|" # something that will never appear in file path
+
+if version_info[0] < 3: # hacky 2-3 compatibility
+	pyTwo = True
+	dict.items = dict.iteritems
+	OrderedDict.items = OrderedDict.iteritems
+
+else:
+	pyTwo = False
+	basestring = str
+
+
+
+
+
 
 ####### THE MAIN EVENT ########
 """ there is the capability to change the separator token used by
 tree addresses - I don't know the best way to do that, short of making
 it an instance attribute """
-separator = "."
+sep = "."
 # separator = "/"
 parentToken = "^" # directs to the tree's parent
-# parentToken = ".."
+# parentToken = .."
 class Tree(object):
 	"""fractal tree-like data structure
 	each branch having both name and value
@@ -64,7 +71,7 @@ class Tree(object):
 		self.overrides = {}
 
 		# separator used to join string addresses
-		self.separator = separator
+		self.sep = sep
 
 		# signals
 		# valueChanged signature: branch, oldValue, newValue
@@ -99,7 +106,7 @@ class Tree(object):
 	@property
 	def parent(self):
 		""":rtype AbstractTree"""
-		return self._parent #type AbstractTree
+		return self._parent #type : AbstractTree
 	@parent.setter
 	def parent(self, val):
 		""" this should be removed, addChild is the correct way to do it """
@@ -195,7 +202,7 @@ class Tree(object):
 			pass
 		# elif isinstance(address, basestring):
 		else:
-			address = str(address).split(separator)
+			address = str(address).split(sep)
 
 		# all input coerced to list
 		first = str(address.pop(0))
@@ -218,16 +225,20 @@ class Tree(object):
 					obj.extras[key] = kwargs[key]
 
 			branch = self.addChild(obj)
-			
+
 			# if a new branch has been created on the final item,
 			# set its value
 			# eg tree("a", "b", value=2) ->
 			# final branch b has its value set if created
-			
+
 
 		else: # branch name might be altered
 			branch = self._branchMap[first]
 		return branch(*address)
+
+	def _branchFromToken(self, token):
+		""" given single address token, return a known branch or none """
+
 
 
 	def __repr__(self):
@@ -296,7 +307,7 @@ class Tree(object):
 	def getBranch(self, lookup, default=None):
 		""" returns branch object if it exists or default """
 		if isinstance(lookup, basestring):
-			lookup = lookup.split(separator)
+			lookup = lookup.split(sep)
 		name = lookup.pop(0)
 		if name not in self._branchMap.keys():
 			return default
@@ -317,7 +328,7 @@ class Tree(object):
 			return result or default
 
 		if isinstance(lookup, basestring):
-			lookup = lookup.split(separator)
+			lookup = lookup.split(sep)
 		name = lookup.pop(0)
 		if name not in self._branchMap.keys():
 			return default
@@ -362,13 +373,13 @@ class Tree(object):
 	def keys(self):
 		return self._branchMap.keys()
 
-	def iteritems(self):
-		return zip(self._branchMap.keys(),
-		           [i.value for i in self._branchMap.values()]
-		           )
+	# def iteritems(self):
+	# 	return zip(self._branchMap.keys(),
+	# 	           [i.value for i in self._branchMap.values()]
+	# 	           )
 
 	def iterBranches(self):
-		return self._branchMap.iteritems()
+		return self._branchMap.items()
 
 	def allBranches(self, includeSelf=True):
 		""" returns list of all tree objects
@@ -392,7 +403,7 @@ class Tree(object):
 
 	def stringAddress(self):
 		""" returns the address sequence joined by the tree separator """
-		return separator.join(self.address)
+		return sep.join(self.address)
 
 	def search(self, path, onlyChildren=True):
 		""" searches branches for trees matching a partial path,
@@ -484,16 +495,16 @@ class Tree(object):
 				branch.value = str(branch.value).replace(searchFor, replaceWith)
 
 
-	### basic hashing system, after stackOverflow
-	# def __key(self):
-	# 	return (self._name, str(self._value), self._branchMap)
-	#
-	# def __eq__(self, other):
-	# 	if isinstance(other, Tree):
-	# 		return self.__key() == other.__key()
-	# 	return NotImplemented
+	def __eq__(self, other):
+		""" equivalence considers children, value and extras """
+		if isinstance(other, Tree):
+			#return self.__hash__() == other.__hash__()
+			return all( [getattr(self, i) == getattr(other, i)
+			             for i in ("_branchMap", "_value", "extras")])
+		return NotImplementedError
 
 	def __hash__(self):
+		""" hash is unique per object """
 		return hash(self.uuid)
 
 

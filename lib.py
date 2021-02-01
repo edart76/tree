@@ -1,10 +1,9 @@
 
 """ python functions used in tree and associated objects"""
+from __future__ import print_function
 import importlib
 import string
 from sys import version_info
-
-from main import uniqueSign, basestring
 
 if version_info[0] < 3: # hacky 2-3 compatibility
 	pyTwo = False
@@ -35,6 +34,8 @@ def trimArgsKwargs(fn, givenArgs, givenKwargs=None):
 		kwargs = {k : v for k, v in givenKwargs.items() if
 		          k in argSpec.kwonlyargs}
 	return (args, kwargs)
+
+uniqueSign = "|@|" # something that will never appear in file path
 
 
 def incrementName(name, currentNames=None):
@@ -94,7 +95,12 @@ def saveObjectClass(obj, regenFunc="fromDict", relative=True, uniqueKey=True,
 
 
 def loadObjectClass(objData):
-	""" recreates a class object from any known module """
+	""" recreates a class object from any known module 
+	:param objData : dict of form {
+		"?MODULE" : module path,
+		"?CLASS" : class name, }
+		OR
+		tuple of (class name, module path) """
 	if isinstance(objData, dict):
 		for i in ("?MODULE", "?CLASS"):
 			if not objData.get(i):

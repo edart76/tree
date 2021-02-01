@@ -10,7 +10,10 @@ from main import Tree
 
 class FileTree(Tree, PathLike):
 	""" tree object for interfacing with files on disk
-	read only for now
+
+	how can we initialise a tree to a level higher than itself?
+
+	file path will be immutable once created, until we get to moving things
 
 	>>>fileTreeA = FileTree("F:/root_dir")
 	>>>childDir = fileTreeA("assets")
@@ -33,10 +36,11 @@ class FileTree(Tree, PathLike):
 	def __init__(self, dirPath):
 		""":param dirPath : path of root directory for tree """
 		super(FileTree, self).__init__(name="ROOT", val=dirPath)
+		self.absPath = dirPath
 
 	def __fspath__(self):
-		""" return the absolute path to this branch """
-		return os.path.join(self.rootPath, self.address)
+		""" return the absolutWWe path to this branch """
+		return self.absPath
 
 	@property
 	def rootPath(self):

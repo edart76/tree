@@ -1,18 +1,20 @@
 """ pyside2 widget for editing tree objects """
-# import sys
-#
-# ps2Path = "C:\Program Files\Autodesk\Maya2018\Python\Lib\site-packages\PySide2"
-# ps2Path = "C:\Program Files\Autodesk\Maya2018\Python\Lib\site-packages"
-# #ps2Path = ps2Path.replace("\\", "/")
-# print(sys.path)
-# sys.path.append(ps2Path)
-# print(sys.path)
 
+
+from __future__ import print_function
+from collections import OrderedDict
 from PySide2 import QtCore, QtWidgets, QtGui
 from main import Tree
+from signal import Signal
 from delta import TreeDelta
-# from edRig.tesserae.ui2.lib import ContextMenu, expandingPolicy, getMayaMainWindow, BaseMayaUi, KeyState
-from main.ui.lib import KeyState, ContextMenu
+
+from tree.ui.lib import KeyState, PartialAction, ContextMenu
+
+from sys import version_info
+pyTwo = version_info[0] < 3
+if pyTwo:
+	dict.items = dict.iteritems
+	OrderedDict.items = OrderedDict.iteritems
 
 
 
@@ -26,42 +28,58 @@ expandingPolicy = QtWidgets.QSizePolicy(
 	QtWidgets.QSizePolicy.Expanding,
 )
 
-from edRig import CURRENT_PATH
-import os
+from tree.ui import RESOURCE_DIR
+#ICON_PATH = CURRENT_PATH + "/tesserae/ui2/"
 
-ICON_PATH = CURRENT_PATH + "/tesserae/ui2/"
+ICON_PATH = RESOURCE_DIR
 ICON_PATH = ICON_PATH.replace("\\", "/")
-#ICON_PATH = os.path.join(CURRENT_PATH, "/resources/icons/")
+
 
 
 # square icons
-squareCentre = QtGui.QPixmap()
-squarePath = os.path.join(ICON_PATH + "square_centre.png")
-downPath = os.path.join(ICON_PATH + "square_down.png")
-
-squareSides = {}
-for i, key in enumerate(["down", "left", "up", "right"]):
-	tf = QtGui.QTransform()
-	tf.rotate(90 * i)
-	squareSides[key] = squareCentre.transformed(tf)
-
-#icon-size: 32px 32px;
-
-styleSheet = """
-QTreeView::branch::open::has-children {
-    image: url('@square_down@');
-}
-QTreeView::branch::closed::has-children {
-    image: url('@square_centre@');
-}
-"""
+#squareCentre = QtGui.QPixmap() # QPixmap crashes for some reason
 
 
-subs = {"@square_centre@" : squarePath,
-        "@square_down@" : downPath}
+doIcons = False
 
-for k, v in subs.iteritems():
-	styleSheet = styleSheet.replace(k, v)
+if doIcons:
+
+	squarePath = ICON_PATH + "square_centre.png"
+	downPath = ICON_PATH + "square_down.png"
+
+	#squareDown = QtGui.QPixmap(downPath)
+	#squareDown = QtGui.QImage(downPath)
+	#print(squarePath)
+	squareDown = QtGui.QIcon(downPath)
+	#squareCentre = QtGui.QImage(squarePath)
+	squareCentre = QtGui.QIcon(squarePath)
+	squareSides = {}
+
+	print(2)
+
+	for i, key in enumerate(["down", "left", "up", "right"]):
+		tf = QtGui.QTransform()
+		tf.rotate(90 * i)
+		squareSides[key] = squareDown.transformed(tf)
+
+	#icon-size: 32px 32px;
+	print(3)
+
+
+	styleSheet = """
+	QTreeView::branch::open::has-children {
+	    image: url('@square_down@');
+	}
+	QTreeView::branch::closed::has-children {
+	    image: url('@square_centre@');
+	}
+	"""
+
+	subs = {"@square_centre@" : squarePath,
+	        "@square_down@" : downPath}
+
+	for k, v in subs.items():
+		styleSheet = styleSheet.replace(k, v)
 
 class WheelEventFilter(QtCore.QObject):
 	def eventFilter(self, obj, event):
@@ -111,47 +129,50 @@ class SelectionModelContainer(object):
 rowHeight = 16
 
 
-class TileSettings(QtWidgets.QTreeView):
+class TreeWidget(QtWidgets.QTreeView):
 	"""widget for viewing and editing an Tree
 	display values in columns, branches in rows"""
 	highlightKind = {
-		"error" : QtCore.Qt.red,
-		"warning" : QtCore.Qt.yellow,
-		"success" : QtCore.Qt.green,
+		"error": QtCore.Qt.red,
+		"warning": QtCore.Qt.yellow,
+		"success": QtCore.Qt.green,
 	}
 
 	def __init__(self, parent=None, tree=None):
 		""":param tree : Tree"""
-		super(TileSettings, self).__init__(parent)
+		super(TreeWidget, self).__init__(parent)
 		self.setSizePolicy(expandingPolicy)
-		#self.installEventFilter(WheelEventFilter(self))
-		self.setWindowIcon(QtGui.QIcon(squareCentre))
+		# self.installEventFilter(WheelEventFilter(self))
+		if doIcons:
+			self.setWindowIcon(QtGui.QIcon(squareCentre))
+			self.setStyleSheet(styleSheet)
 
 		self.setDragEnabled(True)
 		self.setAcceptDrops(True)
 		self.setDragDropMode(
 			QtWidgets.QAbstractItemView.InternalMove
 		)
-		self.setSelectionMode( self.ExtendedSelection )
+		self.setSelectionMode(self.ExtendedSelection)
 		self.setAutoScroll(False)
 		self.setFocusPolicy(QtCore.Qt.ClickFocus)
 		self.setEditTriggers(QtWidgets.QTreeView.DoubleClicked |
 		                     QtWidgets.QTreeView.EditKeyPressed)
-		self.setItemDelegate(BranchDelegate())
+		self.setItemDelegate(AbstractBranchDelegate())
 		self.menu = ContextMenu(self)
+
+		self.sizeChanged = Signal()
 
 		# convenience wrappers
 		self.keyState = KeyState()
 
-		self.highlights = {} # dict of tree addresses to highlight
+		self.highlights = {}  # dict of tree addresses to highlight
 		self.tree = None
 		self.root = None
-		# self.contentChanged = Signal()
+		self.contentChanged = Signal()
 		self.selectedEntry = None
 		self.actions = {}
 		self.modelObject = None
-		#self.selectionModel = None
-
+		# self.selectionModel = None
 
 		# appearance
 		header = self.header()
@@ -163,8 +184,6 @@ class TileSettings(QtWidgets.QTreeView):
 		self.setSizeAdjustPolicy(
 			QtWidgets.QAbstractScrollArea.AdjustToContents
 		)
-		self.setStyleSheet(styleSheet)
-
 
 		self.setUniformRowHeights(True)
 		self.setIndentation(10)
@@ -181,15 +200,14 @@ class TileSettings(QtWidgets.QTreeView):
 		self.savedSelectedTrees = []
 		self.lastSelected = None
 
-		# self.contentChanged.connect(self.resizeToTree)
-		#self.setSizePolicy(expandingPolicy)
+		self.contentChanged.connect(self.resizeToTree)
+		# self.setSizePolicy(expandingPolicy)
 
 		self.expandAll()
 
 		self.clicked.connect(self.onClicked)
 		self.activated.connect(self.onClicked)
 		self.pressed.connect(self.onClicked)
-
 
 	@property
 	def sel(self):
@@ -206,29 +224,29 @@ class TileSettings(QtWidgets.QTreeView):
 		for k, v in self.tree.iterBranches():
 			maxLen = max(maxLen, len(k) + len(str(v.value)))
 
-		self.resize( self.viewportSizeHint().width(),
-		                          self.viewportSizeHint().height() +
-		                          self.header().rect().height() )
-
+		self.resize(self.viewportSizeHint().width(),
+		            self.viewportSizeHint().height() +
+		            self.header().rect().height())
+		self.sizeChanged()
+		pass
 
 	def mousePressEvent(self, event):
-		#print("tileSettings mouse event")
+		# print("tileSettings mouse event")
 		self.keyState.mousePressed(event)
-		#print("shift {}, ctrl {}".format(self.keyState.shift, self.keyState.ctrl))
+		# print("shift {}, ctrl {}".format(self.keyState.shift, self.keyState.ctrl))
 
 		# only pass event on editing,
 		# need to manage selection separately
 		if not (self.keyState.ctrl or self.keyState.shift):
-			#print("settings pass mouse event")
-			super(TileSettings, self).mousePressEvent(event)
+			# print("settings pass mouse event")
+			super(TreeWidget, self).mousePressEvent(event)
 
 		index = self.indexAt(event.pos())
 		self.onClicked(index)
 
-
 	def onClicked(self, index):
 		""" manage selection manually """
-		#print("settings clicked {}".format(index))
+		# print("settings clicked {}".format(index))
 
 		if not (self.keyState.ctrl or self.keyState.shift):
 			pass
@@ -251,8 +269,8 @@ class TileSettings(QtWidgets.QTreeView):
 
 		# set previous selection
 		self.lastSelected = index
-		#self.sel.setCurrent(index)
 
+	# self.sel.setCurrent(index)
 
 	def setTree(self, tree):
 		"""associates widget with Tree object"""
@@ -263,18 +281,17 @@ class TileSettings(QtWidgets.QTreeView):
 
 		self.modelObject = TreeModel(tree=self.tree)
 		self.setModel(self.modelObject)
-		self.setSelectionModel( QtCore.QItemSelectionModel(self.modelObject) )
+		self.setSelectionModel(QtCore.QItemSelectionModel(self.modelObject))
 		self.modelObject.view = self
 
-		self.modelObject.layoutAboutToBeChanged.connect( self.saveAppearance)
-		self.modelObject.layoutChanged.connect( self.restoreAppearance )
+		self.modelObject.layoutAboutToBeChanged.connect(self.saveAppearance)
+		self.modelObject.layoutChanged.connect(self.restoreAppearance)
 
 		# self.resizeToTree()
 		self.expandAll()
-		self.setRootIndex( self.model().invisibleRootItem().child(0, 0).index())
+		self.setRootIndex(self.model().invisibleRootItem().child(0, 0).index())
 
 		return self.modelObject
-
 
 	def makeMenu(self):
 		""" create context menu """
@@ -287,35 +304,38 @@ class TileSettings(QtWidgets.QTreeView):
 				if not addSep: self.menu.addSection("Tree options")
 
 				self.menu.addAction(
-					ActionItem(execDict={
-						"func" : Tree._setTreeValue,
-						"args" : [branch, option] }, name=option))
+					PartialAction(fn=Tree._setTreeValue,
+					              parent=None,
+					              name=option,
+					              args=[branch, option])
+				)
+					# ActionItem(execDict={
+					# 	"func": Tree._setTreeValue,
+					# 	"args": [branch, option]}, name=option))
 				addSep = 1
 		if addSep: self.menu.addSeparator()
-		self.menu.addAction(func=self.addEntry)
-		self.menu.addAction(func=self.copyEntries)
-		self.menu.addAction(func=self.pasteEntries)
-		self.menu.addAction(func=self.display)
-		self.menu.addAction(func=self.resizeToTree)
+		self.menu.addAction(fn=self.addEntry)
+		self.menu.addAction(fn=self.copyEntries)
+		self.menu.addAction(fn=self.pasteEntries)
+		self.menu.addAction(fn=self.display)
+		self.menu.addAction(fn=self.resizeToTree)
 
 	def display(self):
 		print(self.tree.display())
-
 
 	def copyEntries(self):
 		# if not isinstance(entries, list):
 		# 	entries = [entries]
 		clip = QtGui.QGuiApplication.clipboard()
-		indices = self.selectedIndexes() # i hate
-		#print "indices {}".format(indices)
+		indices = self.selectedIndexes()  # i hate
+		# print "indices {}".format(indices)
 		""" returns a python list of qModelIndices """
 		if not indices:
-			print( "no entries selected to copy" )
+			print("no entries selected to copy")
 			return
-		index = indices[0] # only copying single entry for now
+		index = indices[0]  # only copying single entry for now
 
-
-		mime = self.modelObject.mimeData( [index] )
+		mime = self.modelObject.mimeData([index])
 		# print( "copy mime {}".format(mime.text()))
 		clip.setMimeData(mime)
 
@@ -323,25 +343,25 @@ class TileSettings(QtWidgets.QTreeView):
 		set to clipboard
 		"""
 
-
 		pass
+
 	def pasteEntries(self):
-		print "pasting"
-		indices = self.selectedIndexes() # i strongly hate
+		print("pasting")
+		indices = self.selectedIndexes()  # i strongly hate
 		if not indices:
 			return
 		index = indices[0]
 		clip = QtGui.QGuiApplication.clipboard()
 		data = clip.mimeData()
-		print "mime is {}".format(data.text())
-		regenDict = eval(data.text()) # this is probably extremely dangerous lol
+		print("mime is {}".format(data.text()))
+		regenDict = eval(data.text())  # this is probably extremely dangerous lol
 		pasteTree = Tree.fromDict(regenDict)
 
 		# get parent item of selected index, addChild with abstract tree,
 		# build from tree for items
-		#commonParentIndex = index.parent()
+		# commonParentIndex = index.parent()
 		commonParentIndex = index
-		commonParentItem = self.modelObject.itemFromIndex( commonParentIndex ) \
+		commonParentItem = self.modelObject.itemFromIndex(commonParentIndex) \
 		                   or self.modelObject.invisibleRootItem()
 
 		commonParentItem.tree.addChild(pasteTree)
@@ -357,72 +377,67 @@ class TileSettings(QtWidgets.QTreeView):
 		parentItem.tree.addChild(newBranch)
 		self.modelObject.buildFromTree(newBranch, parentItem)
 
-
-
 	def contextMenuEvent(self, event):
-		#print "settings context event"
-		self.onContext( event)
+		# print "settings context event"
+		self.onContext(event)
 		self.sync()
 
 	def onContext(self, event):
 		self.makeMenu()
-		#pos = event.localPos()
+		# pos = event.localPos()
 		pos = event.globalPos()
 		pos = event.pos()
-		#pos = self.viewport().mapFromGlobal( self.mapToGlobal( event.pos()))
-		pos = self.mapToGlobal( event.pos())
-		menu = self.menu.exec_( pos )
-		#menu = self.menu.exec_( self.viewport().mapToGlobal(event.pos()) )
-		#menu = self.menu.exec_( self.viewport().mapToGlobal(event.globalPos()) )
+		# pos = self.viewport().mapFromGlobal( self.mapToGlobal( event.pos()))
+		pos = self.mapToGlobal(event.pos())
+		menu = self.menu.exec_(pos)
 
-
+	# menu = self.menu.exec_( self.viewport().mapToGlobal(event.pos()) )
+	# menu = self.menu.exec_( self.viewport().mapToGlobal(event.globalPos()) )
 
 	def showMenu(self, *args, **kwargs):
 		return self.menu.exec_(*args, **kwargs)
 
 	def wheelEvent(self, event):
-		#print("settings wheel event accepted {}".format(event.isAccepted()))
-		super(TileSettings, self).wheelEvent(event)
+		# print("settings wheel event accepted {}".format(event.isAccepted()))
+		super(TreeWidget, self).wheelEvent(event)
 		event.accept()
 		return True
 
-
 	# def dragEnterEvent(self, event):
 	#
-	# 	super(TileSettings, self).dragEnterEvent(event)
+	# 	super(TreeWidget, self).dragEnterEvent(event)
 	# 	# event.accept()
 	#
 	#
 	# def dragMoveEvent(self, event):
 	#
-	# 	super(TileSettings, self).dragMoveEvent(event)
+	# 	super(TreeWidget, self).dragMoveEvent(event)
 	# 	# event.accept()
 
 	def saveAppearance(self):
 		""" saves expansion and selection state """
-		#print("saving appearance")
+		# print("saving appearance")
 		self.savedSelectedTrees = []
 		self.savedExpandedTrees = []
 		for i in self.selectionModel().selectedRows():
 			branch = self.modelObject.treeFromRow(i)
 			self.savedSelectedTrees.append(branch)
-		#print("allrows {}".format(self.modelObject.allRows()))
+		# print("allrows {}".format(self.modelObject.allRows()))
 		for i in self.modelObject.allRows():
-			#print("treeFromRow {}".format(self.modelObject.treeFromRow(i)))
+			# print("treeFromRow {}".format(self.modelObject.treeFromRow(i)))
 			if self.isExpanded(i):
-				#print()
+				# print()
 				branch = self.modelObject.treeFromRow(i)
 				if branch:
 					self.savedExpandedTrees.append(branch)
 		# save viewport scroll position
 		self.scrollPos = self.verticalScrollBar().value()
 
-
 	def restoreAppearance(self):
 		""" restores expansion and selection state """
-		#print("restore appearance")
-		#debug( self.savedSelectedTrees)
-		#debug( self.savedExpandedTrees)
+		# print("restore appearance")
+		# debug( self.savedSelectedTrees)
+		# debug( self.savedExpandedTrees)
 		for i in self.savedSelectedTrees:
 			if not self.model().rowFromTree(i):
 				continue
@@ -437,13 +452,11 @@ class TileSettings(QtWidgets.QTreeView):
 		# 	#self.expand( self.modelObject.rowFromTree(i) )
 		# 	pass
 
-		self.setRootIndex( self.model().invisibleRootItem().child(0, 0).index())
+		self.setRootIndex(self.model().invisibleRootItem().child(0, 0).index())
 		self.expandAll()
 		self.resizeToTree()
 
 		self.verticalScrollBar().setValue(self.scrollPos)
-
-
 
 	def keyPressEvent(self, event):
 		""" bulk of navigation operations,
@@ -472,29 +485,28 @@ class TileSettings(QtWidgets.QTreeView):
 
 		sel = self.selectionModel().selectedRows()
 
-
 		self.saveAppearance()
 		# don't override anything if editing is in progress
 		if self.state() == QtWidgets.QTreeView.EditingState or len(sel) == 0:
-			return super(TileSettings, self).keyPressEvent(event)
+			return super(TreeWidget, self).keyPressEvent(event)
 		refresh = True
 		try:
 			# very important that event methods don't error,
 			# messes up whole maya ui if they do
 
-			#if event.modifiers() == QtCore.Qt.ControlModifier:
+			# if event.modifiers() == QtCore.Qt.ControlModifier:
 			if self.keyState.ctrl:
-				if event.key() == QtCore.Qt.Key_D: # duplicate
+				if event.key() == QtCore.Qt.Key_D:  # duplicate
 					for row in sel:
 						self.modelObject.duplicateRow(row)
 						return True
-				elif event.key() == QtCore.Qt.Key_C: # copy
+				elif event.key() == QtCore.Qt.Key_C:  # copy
 					for row in sel:
 						self.modelObject.duplicateRow(row)
 						return True
 
 			# shifting row up or down
-			#if event.modifiers() == QtCore.Qt.ShiftModifier | QtCore.Qt.ControlModifier:
+			# if event.modifiers() == QtCore.Qt.ShiftModifier | QtCore.Qt.ControlModifier:
 			if self.keyState.shift and self.keyState.ctrl:
 				if event.key() in [QtCore.Qt.Key_Up, QtCore.Qt.Key_Left]:
 					for row in sel:
@@ -504,19 +516,18 @@ class TileSettings(QtWidgets.QTreeView):
 						self.modelObject.shiftRow(row, up=False)
 				return True
 
-
 			if event.key() == QtCore.Qt.Key_Delete:
-				#debug( sel )
+				# debug( sel )
 				for row in sel:
 					self.modelObject.deleteRow(row)
 					return True
 
 			if event.key() == QtCore.Qt.Key_P:
 				if self.keyState.shift:
-					for row in sel: # unparent row
+					for row in sel:  # unparent row
 						self.model().unParentRow(row)
-				elif len(sel) > 1: # parent
-					self.model().parentRows( sel[:-1], sel[-1])
+				elif len(sel) > 1:  # parent
+					self.model().parentRows(sel[:-1], sel[-1])
 				return True
 
 			# direction keys to move cursor
@@ -533,8 +544,7 @@ class TileSettings(QtWidgets.QTreeView):
 				# down to child
 				pass
 
-
-			return super(TileSettings, self).keyPressEvent(event)
+			return super(TreeWidget, self).keyPressEvent(event)
 
 
 		except Exception as e:
@@ -542,131 +552,119 @@ class TileSettings(QtWidgets.QTreeView):
 		finally:
 			self.model().sync()
 			self.restoreAppearance()
-			#return super(TileSettings, self).keyPressEvent(event)
+			# return super(TreeWidget, self).keyPressEvent(event)
 			pass
-
-
 
 	def focusNextPrevChild(self, direction):
 		return False
 
-
 	def sync(self):
-		#self.setTree(self.tree)
+		# self.setTree(self.tree)
 		self.modelObject.sync()
-		self.setRootIndex( self.model().invisibleRootItem().child(0, 0).index())
+		self.setRootIndex(self.model().invisibleRootItem().child(0, 0).index())
 		self.expandAll()
 		self.resizeToTree()
-
 
 	def addHighlight(self, address, kind):
 		"""adds a highlight to TreeView line, depending on reason"""
 		colour = QtCore.QColor(self.highlightKind[kind])
 		self.highlights[address] = kind
 
-
 	def initActions(self):
 		"""sets up copy, add, delete etc actions for branch entries"""
 
 
-class BranchDelegate(QtWidgets.QStyledItemDelegate):
+class AbstractBranchDelegate(QtWidgets.QStyledItemDelegate):
 	""" use for support of locking entries, options on right click etc """
 
 	def createEditor(self, parent, options, index):
 		""" check for options or if entry is locked """
 		item = index.model().itemFromIndex(index)
-		if isinstance(item, BranchItem):
+		if isinstance(item, AbstractBranchItem):
 			# don't mess with moving / renaming branches
-			return super(BranchDelegate, self).createEditor(parent, options, index)
+			return super(AbstractBranchDelegate, self).createEditor(parent, options, index)
 		branch = item.tree
 		if branch.extras.get("lock") or "options" in branch.extras:
 			return None
-		return super(BranchDelegate, self).createEditor(parent, options, index)
+		return super(AbstractBranchDelegate, self).createEditor(parent, options, index)
 
-	# def paint(self, painter, option, index):
-	# 	""" draw test icon """
-	# 	painter.drawPixmap(
-	# 		QtCore.QPointF(0.0, 0.0),
-	# 		squareCentre,
-	# 		QtCore.QRectF(0.0, 0.0, 20.0, 20.0)
-	# 	)
+# def paint(self, painter, option, index):
+# 	""" draw test icon """
+# 	painter.drawPixmap(
+# 		QtCore.QPointF(0.0, 0.0),
+# 		squareCentre,
+# 		QtCore.QRectF(0.0, 0.0, 20.0, 20.0)
+# 	)
 
 
-
-class BranchItem(QtGui.QStandardItem):
+class AbstractBranchItem(QtGui.QStandardItem):
 	"""small wrapper allowing standardItems to take tree objects directly"""
-	ICONS = {"centre" : QtGui.QIcon( squareCentre ),
-	         "down" : QtGui.QIcon( squareSides["down"])}
+	if doIcons:
+		ICONS = {"centre": QtGui.QIcon(squareCentre),
+		         "down": QtGui.QIcon(squareSides["down"])}
 
 	def __init__(self, tree):
 		""":param tree : Tree"""
 		self.tree = tree or Tree("root")
-		super(BranchItem, self).__init__(self.tree.name)
-		#super(BranchItem, self).setIcon(self.ICONS["centre"])
+		super(AbstractBranchItem, self).__init__(self.tree.name)
+		# super(AbstractBranchItem, self).setIcon(self.ICONS["centre"])
 
-
-
-		self.treeType = Tree # add support here for subclasses if necessary
+		self.treeType = Tree  # add support here for subclasses if necessary
 		self.setColumnCount(1)
-		#self.icon = self.ICONS["centre"]
-
+		# self.icon = self.ICONS["centre"]
 
 		self.trueType = type(self.tree.name)
-		#self.setIcon(self.icon)
-		# print(self.__dict__)
-		# print(self.tree)
 
+	# self.setIcon(self.icon)
+	# print(self.__dict__)
+	# print(self.tree)
 
+	# self.setIcon(QtGui.QIcon())
 
-		#self.setIcon(QtGui.QIcon())
-
-		# self.icon = tree.extras.get("icon")
-		# if self.icon and self.icon in self.ICONS:
-		# 	self.icon = QtGui.QIcon(self.icon)
+	# self.icon = tree.extras.get("icon")
+	# if self.icon and self.icon in self.ICONS:
+	# 	self.icon = QtGui.QIcon(self.icon)
 
 	def data(self, role=QtCore.Qt.DisplayRole):
 		""" just return branch name
 		data is used when regenerating abstractTree from model"""
-		#print("data called - tree name {}".format(self.tree.name))
-		#print(self.__dict__)
+		# print("data called - tree name {}".format(self.tree.name))
+		# print(self.__dict__)
 		# if role == QtCore.Qt.DecorationRole:
 		# 	return self.icon
 		if role == objRole:
-			#return self.tree # crashes
+			# return self.tree # crashes
 			return self.tree.address
 		elif role == QtCore.Qt.SizeHintRole:
 			return QtCore.QSize(
 				len(self.tree.name) * 7.5,
 				rowHeight)
 
-		base = super(BranchItem, self).data(role)
+		base = super(AbstractBranchItem, self).data(role)
 		return base
 
-	def setData(self, value, role): # sets the NAME of the tree
-		name = self.tree._setName(value) # role is irrelevant
+	def setData(self, value, role):  # sets the NAME of the tree
+		name = self.tree._setName(value)  # role is irrelevant
 		self.emitDataChanged()
-		return super(BranchItem, self).setData(name, role)
-
+		return super(AbstractBranchItem, self).setData(name, role)
 
 	def addValueData(self):
 		"""for now this only handles strings
 		in future it may be worth handling dicts, lists etc"""
-		textItem = ValueItem(self.tree)
-		#self.appendColumn([textItem])
-		self.insertColumn( 1, [textItem])
-		#self.setChild(0, 1, textItem)
+		textItem = AbstractValueItem(self.tree)
+		# self.appendColumn([textItem])
+		self.insertColumn(1, [textItem])
+		# self.setChild(0, 1, textItem)
 		pass
 		"""although it makes sense conceptually, direct parent/child
 		relation between branch and value items cannot be done,
 		as they must both appear on same row"""
-
 
 	def parents(self):
 		""" returns chain of branch items to root """
 		if self.parent():
 			return [self.parent()] + self.parent().parents()
 		return []
-
 
 	# def clone(self):
 	# 	""" return new key : value row """
@@ -676,15 +674,16 @@ class BranchItem(QtGui.QStandardItem):
 		return "<BranchItem {}>".format(self.data())
 
 
-class ValueItem(QtGui.QStandardItem):
+class AbstractValueItem(QtGui.QStandardItem):
 	"""overly specific but it's fine
 	differentiate branch tag from actual value"""
+
 	def __init__(self, tree):
 		self.tree = tree
 		self.trueType = type(self.tree.value)
 		value = self.processValue(self.tree.value)
 
-		super(ValueItem, self).__init__(value)
+		super(AbstractValueItem, self).__init__(value)
 
 	def processValue(self, value):
 		if value is None:
@@ -698,18 +697,19 @@ class ValueItem(QtGui.QStandardItem):
 		if self.trueType != type(value):
 			self.trueType = type(value)
 		self.tree.value = self.trueType(value)
-		super(ValueItem, self).setData(value, *args, **kwargs)
+		super(AbstractValueItem, self).setData(value, *args, **kwargs)
 
 	def data(self, role=QtCore.Qt.DisplayRole):
 		if role == QtCore.Qt.SizeHintRole:
 			return QtCore.QSize(
 				len(str(self.tree.value)) * 7.5 + 3,
 				rowHeight)
-		base = super(ValueItem, self).data(role)
+		base = super(AbstractValueItem, self).data(role)
 		return base
 
 	def rowCount(self):
 		return 0
+
 	def columnCount(self):
 		return 0
 
@@ -722,7 +722,6 @@ class ValueItem(QtGui.QStandardItem):
 
 class TreeModel(QtGui.QStandardItemModel):
 
-
 	def __init__(self, tree, parent=None):
 		super(TreeModel, self).__init__(parent)
 		self.tree = None
@@ -730,10 +729,9 @@ class TreeModel(QtGui.QStandardItemModel):
 		self.setTree(tree)
 		self.atRoot = False
 		self.setHorizontalHeaderLabels(["branch", "value"])
-		#self.view = None # hacky
+		# self.view = None # hacky
 
-		self.movingEntries = [] # list of entries being dragged
-
+		self.movingEntries = []  # list of entries being dragged
 
 	# drag and drop support
 	def supportedDropActions(self):
@@ -747,7 +745,7 @@ class TreeModel(QtGui.QStandardItemModel):
 
 	def mimeData(self, indices):
 		indices = indices[0::2]
-		#debug(indices)
+		# debug(indices)
 		# check that only root entry of each subtree is copied
 		trees = [self.itemFromIndex(i) for i in indices]
 		infos = []
@@ -755,24 +753,24 @@ class TreeModel(QtGui.QStandardItemModel):
 			branch = self.itemFromIndex(i).tree
 			infos.append(branch.serialise())
 			self.movingEntries.append(branch)
-		#text = str(tree.serialise() )
+		# text = str(tree.serialise() )
 		text = str(infos)
 		mime = QtCore.QMimeData()
-		mime.setText( text )
+		mime.setText(text)
 		return mime
 
 	def dropMimeData(self, data, action, row, column, parentIndex):
 		if action == QtCore.Qt.IgnoreAction:
 			return True
 		if data.hasText():
-			#text = dict( data.text())
+			# text = dict( data.text())
 			mimeText = data.text()
-			#print("dropped text is {}".format(mimeText))
+			# print("dropped text is {}".format(mimeText))
 
 			info = eval(mimeText)
 			if not isinstance(info, list):
 				info = [info]
-			#print("eval'd info is {}".format(info)) # evals to a list
+			# print("eval'd info is {}".format(info)) # evals to a list
 
 			for branch in self.movingEntries:
 				branch.remove()
@@ -785,26 +783,24 @@ class TreeModel(QtGui.QStandardItemModel):
 				tree = Tree.fromDict(i)
 				# # find and delete original
 
-				parentItem = self.itemFromIndex( parentIndex )
+				parentItem = self.itemFromIndex(parentIndex)
 				if not parentItem:
 					parentItem = self.invisibleRootItem()
 					parentTree = self.tree.root
 				else:
 					parentTree = parentItem.tree
-				#print( "parentItem {}".format(parentItem))
+				# print( "parentItem {}".format(parentItem))
 
 				parentTree.addChild(tree)
 
-				# rebuild abstract tree from parent downwards,
-				# to take account of order
-				#self.buildFromModel(parentItem, parentTree)
-				#print("dropped tree value is {}".format(tree.value))
+			# rebuild abstract tree from parent downwards,
+			# to take account of order
+			# self.buildFromModel(parentItem, parentTree)
+			# print("dropped tree value is {}".format(tree.value))
 
 			self.endInsertRows()
 			self.sync()
-			#self.layoutChanged.emit()
-
-
+		# self.layoutChanged.emit()
 
 		return True
 
@@ -812,36 +808,33 @@ class TreeModel(QtGui.QStandardItemModel):
 		""" returns tree object associated with qModelIndex """
 		return self.itemFromIndex(index).tree
 
-
 	def allRows(self, _parent=None):
 		""" return flat list of all row indices """
 
 		if _parent is None: _parent = QtCore.QModelIndex()
 		rows = []
 
-		for i in range( self.rowCount(_parent)):
+		for i in range(self.rowCount(_parent)):
 			index = self.index(i, 0, _parent)
 			rows.append(index)
 			rows.extend(self.allRows(index))
 
 		return rows
 
-
 	def rowFromTree(self, tree):
 		""" returns index corresponding to tree
 		inelegant search for now """
-		#print("row from tree {}".format(tree))
+		# print("row from tree {}".format(tree))
 		for i in self.allRows():
-			#print("found {}".format(self.treeFromRow(i)))
+			# print("found {}".format(self.treeFromRow(i)))
 			if self.treeFromRow(i) == tree:
-				#print("found match")
+				# print("found match")
 				return i
 
 	def treeFromRow(self, row):
 		""":rtype Tree """
-		#return self.tree( self.data(row, objRole) )
-		return self.tree.getBranch( self.data(row, objRole) )
-
+		# return self.tree( self.data(row, objRole) )
+		return self.tree.getBranch(self.data(row, objRole))
 
 	def duplicateRow(self, row):
 		""" copies tree, increments its name, adds it as sibling
@@ -851,8 +844,8 @@ class TreeModel(QtGui.QStandardItemModel):
 		address = self.data(row, objRole)
 		tree = self.tree(address)
 		treeParent = tree.parent
-		newTree = tree.fromDict( tree.serialise() )
-		newTree = treeParent.addChild( newTree )
+		newTree = tree.fromDict(tree.serialise())
+		newTree = treeParent.addChild(newTree)
 
 		self.buildFromTree(newTree, parent=self.itemFromIndex(parent))
 
@@ -861,21 +854,20 @@ class TreeModel(QtGui.QStandardItemModel):
 		tree = self.treeFromRow(row)
 		parent = tree.parent
 		startIndex = tree.index()
-		newIndex = max(0, min( len(parent.branches), startIndex + (-1 if up else 1)))
+		newIndex = max(0, min(len(parent.branches), startIndex + (-1 if up else 1)))
 		tree.setIndex(newIndex)
-		#self.sync()
 
+	# self.sync()
 
 	def deleteRow(self, row):
 		""" removes tree branch, then removes item """
 
-		tree = self.tree( self.data(row, objRole) )
+		tree = self.tree(self.data(row, objRole))
 		tree.remove()
-
 
 	def unParentRow(self, row):
 		""" parent row to its parent's parent """
-		branch = self.tree( self.data(row, objRole) )
+		branch = self.tree(self.data(row, objRole))
 		parent = branch.parent
 		if parent:
 			grandparent = parent.parent
@@ -885,55 +877,50 @@ class TreeModel(QtGui.QStandardItemModel):
 
 	def parentRows(self, rows, target):
 		""" parent all selected rows to last select target """
-		parent = self.tree( self.data(target, objRole) )
+		parent = self.tree(self.data(target, objRole))
 		for i in rows:
-			branch = self.tree( self.data(i, objRole) )
+			branch = self.tree(self.data(i, objRole))
 			branch.remove()
 			parent.addChild(branch)
-
-
 
 	def setTree(self, tree):
 		self.tree = tree
 		self.clear()
-		self.root = BranchItem(tree.root)
-		rootRow = [self.root, ValueItem(tree)]
+		self.root = AbstractBranchItem(tree.root)
+		rootRow = [self.root, AbstractValueItem(tree)]
 
-		#self.root = self.invisibleRootItem()
-		#self.root.tree = tree.root
-		#self.beginResetModel()
+		# self.root = self.invisibleRootItem()
+		# self.root.tree = tree.root
+		# self.beginResetModel()
 		self.appendRow(rootRow)
 
 		for i in self.tree.branches:
 			self.buildFromTree(i, parent=self.root)
-		#self.endResetModel()
+		# self.endResetModel()
 		self.setHorizontalHeaderLabels(["branch", "value"])
-
 
 	def buildFromTree(self, tree, parent=None):
 		""":param tree : Tree
-		:param parent : BranchItem below which to build"""
-		branchItem = BranchItem(tree=tree)
-		textItem = ValueItem(tree)
+		:param parent : AbstractBranchItem below which to build"""
+		branchItem = AbstractBranchItem(tree=tree)
+		textItem = AbstractValueItem(tree)
 
-		parent.appendRow( [branchItem, textItem] )
+		parent.appendRow([branchItem, textItem])
 		# if tree.branches:
-		# 	branchItem.setIcon(BranchItem.ICONS["centre"])
+		# 	branchItem.setIcon(AbstractBranchItem.ICONS["centre"])
 		for i in tree.branches:
 			self.buildFromTree(i, parent=branchItem)
 		self.itemChanged.emit(branchItem)
 		return branchItem
 
-
 	def sync(self):
 		""" synchronises qt model from tree object,
 		never directly other way round
 		"""
-		#self.view.saveAppearance()
+		# self.view.saveAppearance()
 		self.clear()
 		self.setTree(self.tree)
-		#self.view.restoreAppearance()
-
+# self.view.restoreAppearance()
 
 class EditTree(QtWidgets.QUndoCommand):
 
@@ -950,40 +937,48 @@ class EditTree(QtWidgets.QUndoCommand):
 
 
 def test():
-	return
-	#from edRig.lib.python import testTree
 
-	# sys.path.append("C:\Program Files\Autodesk\Maya2018\Python\Lib\site-packages\PySide2")
+	from PySide2 import QtCore
+	from tree.test_tree import tempTree
+	import sys
+	app = QtWidgets.QApplication(sys.argv)
+	win = QtWidgets.QMainWindow()
 
-	# import PySide2
-
-	# win = QtWidgets.QMainWindow()
-	# widg = TileSettings(None, tree=testTree)
-	# #widg.setTree(testTree)
-	# win.setCentralWidget(widg)
-	# ref = win.show()
-	win = BaseMayaUi(parent=getMayaMainWindow())
 	winLayout = QtWidgets.QGridLayout(win)
-	section = Section(win, title="tree")
-	layout = QtWidgets.QGridLayout(section)
-	#widg = TileSettings(win, tree=testTree)
-	widg = TileSettings(section, tree=testTree)
-	layout.addWidget(widg)
-	winLayout.addWidget(section)
+
+	widg = TreeWidget(win, tree=tempTree)
+	winLayout.addWidget(widg)
 	# winLayout.setSpacing(0)
 	# winLayout.setContentsMargins(0, 0, 0, 0)
 
 
 	win.setLayout(winLayout)
-	section.setContentLayout(layout)
-	#win.setSizePolicy(expandingPolicy)
 
-	#return ref, win
-	return win.show()
+	sys.exit(app.exec_())
+
+
 
 if __name__ == "__main__":
 	# test the tree widget
-	#print("ey")
-	#import sys
-	test()
+	from PySide2 import QtCore
+	from tree.test_tree import tempTree
+	import sys
+	app = QtWidgets.QApplication(sys.argv)
+	win = QtWidgets.QMainWindow()
+
+	#winLayout = QtWidgets.QGridLayout(win)
+
+	widg = TreeWidget(win, tree=tempTree)
+	#winLayout.addWidget(widg)
+	# winLayout.setSpacing(0)
+	# winLayout.setContentsMargins(0, 0, 0, 0)
+
+
+	#win.setLayout(winLayout)
+	win.setCentralWidget(widg)
+	s = win.show()
+	#app.exec_()
+	sys.exit(app.exec_())
+
+	print(s)
 

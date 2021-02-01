@@ -1,20 +1,35 @@
 
+from __future__ import print_function
 from PySide2 import QtCore, QtGui, QtWidgets
 from functools import partial
+from sys import version_info
 
+if version_info[0] < 3: # hacky 2-3 compatibility
+	pyTwo = True
+	dict.items = dict.iteritems
+	OrderedDict.items = OrderedDict.iteritems
+
+else:
+	pyTwo = False
+	basestring = str
 
 class PartialAction(QtWidgets.QAction):
-	"""the bridge between normal action items and qt"""
+	""" use partial as input to qt action """
+	def __init__(self, fn, args=(), kwargs=None, name=None, parent=None):
+		super(PartialAction, self).__init__(parent)
+		kwargs = kwargs or {}
+		self._partial = partial(fn, *args, **kwargs)
+		self.triggered.connect(self._partial)
+		self._name = None
+		self.name = name or fn.__name__
 
-	def __init__(self, partials=None, parent=None, icon=None):
-		super(EmbeddedAction, self).__init__(parent)
-		self._actionObject = actionObject or None
-		if not self._actionObject:
-			print "no actionObject received for embedded action!"
-			return
-		self.name = str(self._actionObject.name)
-		self.triggered.connect(self._actionObject.execute)
-
+	@property
+	def name(self):
+		return self.name
+	@name.setter
+	def name(self, val):
+		self._name = val
+		self.setText(val)
 
 class ContextMenu(object):
 	"""this is no reason this doesn't inherit from qmenu now,
@@ -32,39 +47,49 @@ class ContextMenu(object):
 		to be implemented with more thorough internal computation"""
 		return self.rootMenu.exec_(pos)
 
-	def addAction(self, action=None, func=None):
-		# action.setShortcutVisibleInContextMenu(True)
-		if func and not action:
-			action = partial(func)
-			# action = ActionItem(execDict={"func" : func})
-		self.addSubAction(action)
+	def addAction(self, fn=None, name=None, action=None, *args, **kwargs):
+		""" given function or full PartialAction,
+		add it to the menu """
+		self.addSubAction(fn=fn, action=action, name=name, parent=self.rootMenu,
+		                  args=args, kwargs=kwargs)
 
-	def addMenu(self, name):
-		menu = QtWidgets.QMenu(None, title=name)
-		self.rootMenu.addMenu(menu)
-		return ContextMenu(self.view, menu)
+	# def addMenu(self, name):
+	# 	menu = QtWidgets.QMenu(None, title=name)
+	# 	self.rootMenu.addMenu(menu)
+	# 	return ContextMenu(self.view, menu)
 
 	# return menu
 
-	def addSubMenu(self, name="", parent=None):
+	def addMenu(self, name="", parent:QtCore.QObject=None):
+		""" add new QMenu to given parent and return it"""
 		menu = QtWidgets.QMenu(None, title=name)
+		parent = parent or self.rootMenu
 		parent.addMenu(menu)
 		return menu
 
-	def addSubAction(self, actionObject=None, parent=None):
-		"""not robust at all but idgaf"""
-		# regen bug affects this
-		if not parent:
+
+	def addSubAction(self, fn=None, name=None, action=None,
+	                 args=(), kwargs=None,
+	                 parent=None,
+
+	                 ):
+		"""add given PartialAction to the given object
+		if you want a kwarg of 'parent', you need to
+		pass an actual prebuilt action object
+		"""
+
+		if not parent: # add to this menu if none is given
 			parent = self.rootMenu
 
-		newAction = EmbeddedAction(actionObject=actionObject, parent=parent)
-		newAction.setText(newAction.name)
-		#print "addSubAction name is {}".format(newAction.name)
-		parent.addAction(newAction)
-		return newAction
+		if not action:
+			action = PartialAction(fn, parent=self.rootMenu,
+			                       name=name,
+				                   )
+		parent.addAction(action)
+		return action
 
 	def marker(self):
-		print "TRIGGERING ACTION"
+		print ("TRIGGERING ACTION")
 
 	def addCommand(self, name, func=None, shortcut=None, parent=None):
 		if not parent:
@@ -101,44 +126,37 @@ class ContextMenu(object):
 		currently expects actionItems as leaves"""
 		# print ""
 		menuDict = menuDict or {}
-		for k, v in menuDict.iteritems():
+		for k, v in menuDict.items():
 			#print "k is {}, v is {}".format(k, v)
 			if isinstance(v, dict):
 				#print "buildMenu v is dict {}".format(v)
 				if not v.keys():
 				#	print "skipping"
 					continue
-				newParent = self.addSubMenu(name=k, parent=parent)
+				newParent = self.addMenu(name=k, parent=parent)
 				self.buildMenu(v, parent=newParent)
 			elif isinstance(v, list):
 				#print "buildMenu v is list {}".format(v)
 				for i in v:
 					self.buildMenu(i, parent=parent)
 
-			# elif isinstance(v, ActionItem) or isinstance(v, ActionList)\
-			# 		or v.__class__.__name__ == "ActionItem":
-			# 	action = self.addSubAction(parent=parent, actionObject=v)
-
-
-		pass
 
 	def buildMenusFromTree(self, tree, parent=None):
 		""" builds recursively from tree
 		only actions at leaves are considered """
 		if tree.branches: # add menu for multiple actions
-			parent = self.addSubMenu(name=tree.name, parent=parent)
+			parent = self.addMenu(name=tree.name, parent=parent)
 			for branch in tree.branches:
 				self.buildMenusFromTree(branch, parent)
 			return parent
 		else: # add single entry for single action
-			action = self.addSubAction(tree.value, parent)
-
+			action = self.addSubAction(tree.value, name=tree.name,
+			                           parent=parent)
 
 	def clearCustomEntries(self):
 		"""clear only custom actions eventually -
 		for now clear everything"""
 		self.rootMenu.clear()
-
 
 
 class KeyState(object):
@@ -181,12 +199,12 @@ class KeyState(object):
 		# shift and ctrl are swapped for me I kid you not
 
 	def mousePressed(self, event):
-		for button, v in self.mouseMap.iteritems():
+		for button, v in self.mouseMap.items():
 			button( event.button() == v)
 		self.syncModifiers(event)
 
 	def mouseReleased(self, event):
-		for button, v in self.mouseMap.iteritems():
+		for button, v in self.mouseMap.items():
 			if event.button() == v:
 				button(False)
 		self.syncModifiers(event)
@@ -211,7 +229,7 @@ class KeyState(object):
 		# 	for key in sequence:
 		# 		key(False)
 
-		for key, v in self.keyMap.iteritems():
+		for key, v in self.keyMap.items():
 			key((event.modifiers() == v)) # not iterable
 		if event.modifiers() == (QtCore.Qt.ShiftModifier | QtCore.Qt.ControlModifier):
 			self.ctrl(True)

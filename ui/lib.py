@@ -3,13 +3,16 @@ from __future__ import print_function
 from PySide2 import QtCore, QtGui, QtWidgets
 from functools import partial
 from sys import version_info
+from collections import OrderedDict
 
 if version_info[0] < 3: # hacky 2-3 compatibility
+	print("py2")
 	pyTwo = True
 	dict.items = dict.iteritems
 	OrderedDict.items = OrderedDict.iteritems
 
 else:
+	print("py3")
 	pyTwo = False
 	basestring = str
 
@@ -53,15 +56,10 @@ class ContextMenu(object):
 		self.addSubAction(fn=fn, action=action, name=name, parent=self.rootMenu,
 		                  args=args, kwargs=kwargs)
 
-	# def addMenu(self, name):
-	# 	menu = QtWidgets.QMenu(None, title=name)
-	# 	self.rootMenu.addMenu(menu)
-	# 	return ContextMenu(self.view, menu)
 
-	# return menu
-
-	def addMenu(self, name="", parent:QtCore.QObject=None):
-		""" add new QMenu to given parent and return it"""
+	def addMenu(self, name="", parent=None):
+		""" add new QMenu to given parent and return it
+		:type parent : QtCore.QObject"""
 		menu = QtWidgets.QMenu(None, title=name)
 		parent = parent or self.rootMenu
 		parent.addMenu(menu)
@@ -173,7 +171,10 @@ class KeyState(object):
 		def __str__(self):
 			return str(self._val)
 		def __nonzero__(self):
-			return self._val.__nonzero__()
+			return self._val
+		def __bool__(self):
+			return self._val
+
 
 
 	def __init__(self):
@@ -239,3 +240,25 @@ class KeyState(object):
 	def debug(self):
 		print(self.mouseMap)
 		print(self.keyMap)
+
+class SelectionModelContainer(object):
+	""" convenience wrapper for QItemSelectionModel"""
+	def __init__(self, selectionModel):
+		self._model = None
+		self.setSelectionModel(selectionModel)
+	def setSelectionModel(self, model):
+		self._model = model
+
+	def add(self, index):
+		self._model.select(index, QtCore.QItemSelectionModel.Select |
+		                   QtCore.QItemSelectionModel.Rows)
+	def remove(self, index):
+		self._model.select(index, QtCore.QItemSelectionModel.Deselect |
+		                   QtCore.QItemSelectionModel.Rows)
+	def toggle(self, index):
+		self._model.select(index, QtCore.QItemSelectionModel.Toggle |
+		                   QtCore.QItemSelectionModel.Rows)
+	def setCurrent(self, index):
+		self._model.setCurrentIndex(index,
+		                            QtCore.QItemSelectionModel.Select |
+		                   QtCore.QItemSelectionModel.Rows)

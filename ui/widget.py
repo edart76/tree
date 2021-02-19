@@ -7,14 +7,29 @@ from PySide2 import QtCore, QtWidgets, QtGui
 from main import Tree
 from signal import Signal
 from delta import TreeDelta
+from tree.lib import DiffUndo
 
-from tree.ui.lib import KeyState, PartialAction, ContextMenu
+from tree.ui.lib import KeyState, PartialAction, ContextMenu, SelectionModelContainer
 
 from sys import version_info
+import sys, traceback, functools
 pyTwo = version_info[0] < 3
 if pyTwo:
 	dict.items = dict.iteritems
 	OrderedDict.items = OrderedDict.iteritems
+
+# decorator for widget event methods to catch any exceptions
+def catchAll(fn, logFunction=print):
+	#print("catchAll fn {}".format(fn))
+	@functools.wraps(fn)
+	def inner(obj, *args, **kwargs):
+		#print("inner obj {} args {} kwargs {}".format(obj, args, kwargs))
+		try:
+			return fn(obj, *args, **kwargs)
+		except Exception as e:
+			traceback.print_exc()
+			logFunction(e)
+	return inner
 
 
 
@@ -33,8 +48,6 @@ from tree.ui import RESOURCE_DIR
 
 ICON_PATH = RESOURCE_DIR
 ICON_PATH = ICON_PATH.replace("\\", "/")
-
-
 
 # square icons
 #squareCentre = QtGui.QPixmap() # QPixmap crashes for some reason
@@ -102,32 +115,7 @@ def removeDuplicates( baseList ):
 			existing.add(i)
 	return result
 
-
-class SelectionModelContainer(object):
-	""" convenience wrapper for QItemSelectionModel"""
-	def __init__(self, selectionModel):
-		self._model = None
-		self.setSelectionModel(selectionModel)
-	def setSelectionModel(self, model):
-		self._model = model
-
-	def add(self, index):
-		self._model.select(index, QtCore.QItemSelectionModel.Select |
-		                   QtCore.QItemSelectionModel.Rows)
-	def remove(self, index):
-		self._model.select(index, QtCore.QItemSelectionModel.Deselect |
-		                   QtCore.QItemSelectionModel.Rows)
-	def toggle(self, index):
-		self._model.select(index, QtCore.QItemSelectionModel.Toggle |
-		                   QtCore.QItemSelectionModel.Rows)
-	def setCurrent(self, index):
-		self._model.setCurrentIndex(index,
-		                            QtCore.QItemSelectionModel.Select |
-		                   QtCore.QItemSelectionModel.Rows)
-
-
 rowHeight = 16
-
 
 class TreeWidget(QtWidgets.QTreeView):
 	"""widget for viewing and editing an Tree
@@ -155,8 +143,8 @@ class TreeWidget(QtWidgets.QTreeView):
 		self.setSelectionMode(self.ExtendedSelection)
 		self.setAutoScroll(False)
 		self.setFocusPolicy(QtCore.Qt.ClickFocus)
-		self.setEditTriggers(QtWidgets.QTreeView.DoubleClicked |
-		                     QtWidgets.QTreeView.EditKeyPressed)
+		# self.setEditTriggers(QtWidgets.QTreeView.DoubleClicked |
+		#                      QtWidgets.QTreeView.EditKeyPressed)
 		self.setItemDelegate(AbstractBranchDelegate())
 		self.menu = ContextMenu(self)
 
@@ -230,19 +218,20 @@ class TreeWidget(QtWidgets.QTreeView):
 		self.sizeChanged()
 		pass
 
-	def mousePressEvent(self, event):
-		# print("tileSettings mouse event")
-		self.keyState.mousePressed(event)
-		# print("shift {}, ctrl {}".format(self.keyState.shift, self.keyState.ctrl))
-
-		# only pass event on editing,
-		# need to manage selection separately
-		if not (self.keyState.ctrl or self.keyState.shift):
-			# print("settings pass mouse event")
-			super(TreeWidget, self).mousePressEvent(event)
-
-		index = self.indexAt(event.pos())
-		self.onClicked(index)
+	# @catchAll
+	# def mousePressEvent(self, event):
+	# 	#print("tileSettings mouse event")
+	# 	self.keyState.mousePressed(event)
+	# 	#print("shift {}, ctrl {}".format(self.keyState.shift, self.keyState.ctrl))
+	#
+	# 	# only pass event on editing,
+	# 	# need to manage selection separately
+	# 	if not (self.keyState.ctrl or self.keyState.shift):
+	# 		# print("settings pass mouse event")
+	# 		return super(TreeWidget, self).mousePressEvent(event)
+	#
+	# 	index = self.indexAt(event.pos())
+	# 	self.onClicked(index)
 
 	def onClicked(self, index):
 		""" manage selection manually """
@@ -252,7 +241,9 @@ class TreeWidget(QtWidgets.QTreeView):
 			pass
 		# if ctrl, toggle selection
 		elif self.keyState.ctrl:
-			self.sel.add(index)
+			# self.sel.add(index)
+			# self.sel.setCurrent(index)
+			self.sel.toggle(index)
 		elif self.keyState.shift:
 			if not self.lastSelected:
 				self.lastSelected = self.modelObject.index(1, 0)
@@ -424,10 +415,15 @@ class TreeWidget(QtWidgets.QTreeView):
 			self.savedSelectedTrees.append(branch)
 		# print("allrows {}".format(self.modelObject.allRows()))
 		for i in self.modelObject.allRows():
+			if not self.model().checkIndex(i):
+				print("index {} is not valid, skipping".format(i))
 			# print("treeFromRow {}".format(self.modelObject.treeFromRow(i)))
 			if self.isExpanded(i):
 				# print()
+				#try:
 				branch = self.modelObject.treeFromRow(i)
+				# except:
+				# 	branch = None
 				if branch:
 					self.savedExpandedTrees.append(branch)
 		# save viewport scroll position
@@ -480,12 +476,11 @@ class TreeWidget(QtWidgets.QTreeView):
 
 		"""
 
-		print("settings keyPress event {}".format(event.key()))
+		# print("settings keyPress event {}".format(event.key()))
 		self.keyState.keyPressed(event)
 
 		sel = self.selectionModel().selectedRows()
-
-		self.saveAppearance()
+		#self.saveAppearance()
 		# don't override anything if editing is in progress
 		if self.state() == QtWidgets.QTreeView.EditingState or len(sel) == 0:
 			return super(TreeWidget, self).keyPressEvent(event)
@@ -550,8 +545,8 @@ class TreeWidget(QtWidgets.QTreeView):
 		except Exception as e:
 			raise
 		finally:
-			self.model().sync()
-			self.restoreAppearance()
+			#self.model().sync()
+			#self.restoreAppearance()
 			# return super(TreeWidget, self).keyPressEvent(event)
 			pass
 
@@ -834,6 +829,7 @@ class TreeModel(QtGui.QStandardItemModel):
 	def treeFromRow(self, row):
 		""":rtype Tree """
 		# return self.tree( self.data(row, objRole) )
+		# print("treeFromRow {} {}".format(row, self.data(row, objRole)))
 		return self.tree.getBranch(self.data(row, objRole))
 
 	def duplicateRow(self, row):
@@ -906,8 +902,6 @@ class TreeModel(QtGui.QStandardItemModel):
 		textItem = AbstractValueItem(tree)
 
 		parent.appendRow([branchItem, textItem])
-		# if tree.branches:
-		# 	branchItem.setIcon(AbstractBranchItem.ICONS["centre"])
 		for i in tree.branches:
 			self.buildFromTree(i, parent=branchItem)
 		self.itemChanged.emit(branchItem)
@@ -917,10 +911,8 @@ class TreeModel(QtGui.QStandardItemModel):
 		""" synchronises qt model from tree object,
 		never directly other way round
 		"""
-		# self.view.saveAppearance()
 		self.clear()
 		self.setTree(self.tree)
-# self.view.restoreAppearance()
 
 class EditTree(QtWidgets.QUndoCommand):
 

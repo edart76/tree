@@ -1,11 +1,11 @@
 
 import copy
-from collections import OrderedDict
-import inspect
 
+from proxy import Proxy
 from main import Tree
 
-""" so it turns out this is really hard """
+""" so it turns out this is really hard 
+like I've been dreaming about it for months hard """
 
 """ 'live inheritance' is achieved by passing out a proxy object wrapper,
 and repeatedly regenerating proxy object data, 
@@ -19,161 +19,32 @@ proxy actually has two components:
  - list of (mutable) transformations to perform on data from base object
  - end interface for accessing that data
 
-the delta-tracking behaviour would be a type of transformation
+the delta-tracking behaviour would be a type of transformation -
+or should output a type of transformation, which can be applied or reversed,
+not necessarily by the specific delta process
+
+a similar transformation could run over data to mirror it in space, for example
+
+reversibility is not important for this use, but it may make the result
+more robust as a whole to pursue it
+
+Q: why don't I use deepdiff?
+A: I need 2.7 support for now, also deepdiff is too
+complicated for me to understand easily if something goes wrong with it
 """
 
 
-class CallWrapper(object):
-	""" pseudo-decorator
-	for pre- and post-call wrapping of specific function """
-	def __init__(self, fn, *args, **kwargs):
-		self._fn = fn
 
-	def preCall(self, *args, **kwargs):
-		pass
-	def postCall(self, result, *args, **kwargs):
-		pass
-
-	def __call__(self, *args, **kwargs):
-		self.preCall(*args, **kwargs)
-		result = self._fn(*args, **kwargs)
-		self.postCall(result, *args, **kwargs)
-		return result
-
-
-class Proxy(object):
-	""" Transparent proxy for most objects
-	code recipe 496741
-	further modifications by ya boi
-
-	terminology:
-
-	"""
-	#__slots__ = ["_obj", "__weakref__"]
-	_class_proxy_cache = {} # { class : { class cache } }
-	_proxyAttrs = ("_proxyObjRef", "_proxyObj", "_proxyDepth")
-	_proxyObjKey = "_proxyObjRef" # attribute pointing to object
-	_methodHooks = {}
-
-	def __init__(self, obj):
-		#object.__setattr__(self, self._proxyObjKey, obj)
-		self._proxyObjRef = obj
-		self._proxyDepth = obj.__dict__.get("_proxyDepth", 0) + 1
-
-	@property
-	def _proxyObj(self):
-		return self._returnProxy()
-	# @_proxyObj.setter
-	# def _proxyObj(self, val):
-	# 	object.__setattr__(self, self._proxyObjKey, val)
-
-	def _returnProxy(self):
-		""" hook for extending proxy behaviour
-		prefer overriding this over properties"""
-		return object.__getattribute__(self, self._proxyObjKey)
-
-	# proxying (special cases)
-	def __getattribute__(self, name):
-		try: # look up attribute on proxy class first
-			return object.__getattribute__(self, name)
-		except:
-			#return getattr( self._proxyObj, name)
-			return getattr( object.__getattribute__(self, "_proxyObj"), name)
-
-	def __delattr__(self, name):
-		delattr(object.__getattribute__(self, self._proxyObjKey), name)
-
-	def __setattr__(self, name, value):
-		if name in self.__class__._proxyAttrs:
-			object.__setattr__(self, name, value)
-		else:
-			#setattr(object.__getattribute__(self, self._proxyObjKey), name, value)
-			setattr(self._proxyObj, name, value)
-
-	def __nonzero__(self):
-		#return bool(object.__getattribute__(self, self._proxyObjKey))
-		return bool(self._proxyObj)
-
-	def __str__(self):
-		#return str(object.__getattribute__(self, self._proxyObjKey))
-		return str(self._proxyObj)
-
-	def __repr__(self):
-		#return repr(object.__getattribute__(self, self._proxyObjKey))
-		return repr(self._proxyObj)
-
-	# factories
-	_special_names = [
-		'__abs__', '__add__', '__and__', '__call__', '__cmp__', '__coerce__',
-		'__contains__', '__delitem__', '__delslice__', '__div__', '__divmod__',
-		'__eq__', '__float__', '__floordiv__', '__ge__', '__getitem__',
-		'__getslice__', '__gt__', '__hash__', '__hex__', '__iadd__', '__iand__',
-		'__idiv__', '__idivmod__', '__ifloordiv__', '__ilshift__', '__imod__',
-		'__imul__', '__int__', '__invert__', '__ior__', '__ipow__', '__irshift__',
-		'__isub__', '__iter__', '__itruediv__', '__ixor__', '__le__', '__len__',
-		'__long__', '__lshift__', '__lt__', '__mod__', '__mul__', '__ne__',
-		'__neg__', '__oct__', '__or__', '__pos__', '__pow__', '__radd__',
-		'__rand__', '__rdiv__', '__rdivmod__', '__reduce__', '__reduce_ex__',
-		'__repr__', '__reversed__', '__rfloorfiv__', '__rlshift__', '__rmod__',
-		'__rmul__', '__ror__', '__rpow__', '__rrshift__', '__rshift__', '__rsub__',
-		'__rtruediv__', '__rxor__', '__setitem__', '__setslice__', '__sub__',
-		'__truediv__', '__xor__', 'next',
-	]
-
-	@classmethod
-	def _create_class_proxy(cls, theclass):
-		"""creates a proxy for the given class"""
-		# combine declared proxy attributes
-		cls._proxyAttrs = set(cls._proxyAttrs)
-		for base in cls.__mro__:
-			if base == object: break
-			cls._proxyAttrs.update(base._proxyAttrs)
-
-		def make_method(name):
-			def method(self, *args, **kw):
-				return getattr(
-					self._proxyObj,
-					name)(*args, **kw)
-			return method
-
-		namespace = {}
-		for name in cls._special_names:
-			if hasattr(theclass, name):
-				namespace[name] = make_method(name)
-		return type("{}({})".format(cls.__name__, theclass.__name__),
-		            (cls,), namespace)
-
-	def __new__(cls, obj, *args, **kwargs):
-		"""
-        creates a proxy instance referencing `obj`. (obj, *args, **kwargs) are
-        passed to this class' __init__, so deriving classes can define an
-        __init__ method of their own.
-        base Proxy class holds master dict
-        """
-		# looks up type-specific proxy class
-		cache = Proxy.__dict__["_class_proxy_cache"]
-		try:
-			genClass = cache[cls][type(obj)]
-		except KeyError:
-			genClass = cls._create_class_proxy(type(obj))
-			cache[cls] = { type(obj) : genClass }
-
-		# create new proxy instance with type-specific proxy class
-		ins = object.__new__(genClass)
-
-		# run init on created instance
-		genClass.__init__(ins, obj, *args, **kwargs)
-		return ins
-
+class Transform(object):
+	""" represents a (reversible?) transformation
+	to be applied to a given object """
 
 class Delta(Proxy):
 	""" delta-tracking wrapper
 	also adapted from 496741 """
+	_proxyAttrs = ("_baseObj", "_mask")
 
-	_proxyAttrs = (#"_proxyObjRef", "_proxyObj",
-	               "_baseObj", "_mask")
-
-	def __init__(self, obj):
+	def __init__(self, obj, deep=False):
 		super(Delta, self).__init__(obj)
 		self._baseObj = obj # reference to base object to draw from
 		self._proxyObjRef = copy.copy(obj)
@@ -208,33 +79,71 @@ class Delta(Proxy):
 		""" loads delta object from dict and reapplies to baseObj """
 		pass
 
+# class ProxyDelta(Proxy, Delta):
+#
+# 	_proxyAttrs = (#"_proxyObjRef", "_proxyObj",
+# 	               "_baseObj", "_mask")
 
-# class DictDelta(Delta):
-# 	def _extractMask(self, proxyObj=None):
-# 		self._mask["added"] = {
-# 			pK : pV for pK, pV in self._proxyObj.iteritems() if \
-# 				pK not in self._baseObj }
-# 		self._mask["modified"] = {
-# 			pK : pV for pK, pV in self._proxyObj.iteritems() if \
-# 				self._baseObj.get(pK) != pV }
-# 		# added and modified functionally the same here
-#
-# 	def applyMask(self, newObj=None):
-# 		self._proxyObj.update(self._mask["added"])
-# 		self._proxyObj.update(self._mask["modified"])
-#
-# class ListDelta(Delta):
-# 	""" basic, indices not working """
-# 	def _extractMask(self):
-# 		self._mask["added"] = {
-# 			self._proxyObj.index(i) : i for i in self._proxyObj \
-# 				if not i in self._baseObj }
-# 	def applyMask(self, newObj=None):
-# 		for index, val in self._mask["added"]:
-# 			try:
-# 				self._proxyObj.insert(index, val)
-# 			except:
-# 				self._proxyObj.append(val)
+
+def deltaTypeForObj(obj):
+	""" very primitive for now """
+	if isinstance(obj, dict):
+		return DictDelta
+	elif hasattr(obj, "__len__"):
+		return ListDelta
+	else:
+		return None
+
+
+class DictDelta(Delta):
+
+	def __init__(self, obj, deep=False):
+		super(DictDelta, self).__init__(obj, deep)
+		if deep:
+			# iterate over list entries to check for complex data
+			for i, entry in enumerate(self):
+				# if entry is complex, wrap it with a delta object
+				if deltaTypeForObj(entry):
+					self[i] = deltaTypeForObj(entry)(entry, deep=True)
+					self._proxyChildren.add(self[i])
+
+	def _extractMask(self, proxyObj=None):
+		self._mask["added"] = {
+			pK : pV for pK, pV in self._proxyObj.iteritems() if \
+				pK not in self._baseObj }
+		self._mask["modified"] = {
+			pK : pV for pK, pV in self._proxyObj.iteritems() if \
+				self._baseObj.get(pK) != pV }
+		# added and modified functionally the same here
+
+	def applyMask(self, newObj=None):
+		self._proxyObj.update(self._mask["added"])
+		self._proxyObj.update(self._mask["modified"])
+
+class ListDelta(Delta):
+	""" basic, indices not working """
+
+	def __init__(self, obj, deep=False):
+		super(ListDelta, self).__init__(obj, deep)
+		if deep:
+			# iterate over list entries to check for complex data
+			for i, entry in enumerate(self):
+				# if entry is complex, wrap it with a delta object
+				if deltaTypeForObj(entry):
+					self[i] = deltaTypeForObj(entry)(entry, deep=True)
+					self._proxyChildren.add(self[i])
+
+	def _extractMask(self):
+		self._mask["added"] = {
+			self._proxyObj.index(i) : i for i in self._proxyObj \
+				if not i in self._baseObj }
+	def applyMask(self, newObj=None):
+		for index, val in self._mask["added"]:
+			try:
+				self._proxyObj.insert(index, val)
+			except:
+				self._proxyObj.append(val)
+
 
 class TreeDelta(Delta):
 	""" final boss """
@@ -331,19 +240,26 @@ testTree("parent.childA").extras["options"] = (930, "eyyy")
 
 
 if __name__ == '__main__':
+	pass
 
-	proxyTree = TreeDelta(testTree)
+	# baseDict = {"a" : "b", 45 : 64}
+	# proxyDict = DictDelta(baseDict)
+	#
+	#
+	#
 
-	proxyTree["proxyKey"] = "w e w _ l a d"
-	proxyTree["parent"] = 12323422
-	proxyTree.value = 4956565
-
-	print(proxyTree.display())
-
-	proxyTree["proxyKey.proxyChild"] = "jojojo"
-
-	print(proxyTree.display())
-	print(testTree.display())
+	# proxyTree = TreeDelta(testTree)
+	#
+	# proxyTree["proxyKey"] = "w e w _ l a d"
+	# proxyTree["parent"] = 12323422
+	# proxyTree.value = 4956565
+	#
+	# print(proxyTree.display())
+	#
+	# proxyTree["proxyKey.proxyChild"] = "jojojo"
+	#
+	# print(proxyTree.display())
+	# print(testTree.display())
 
 
 

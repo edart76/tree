@@ -9,8 +9,7 @@ else:
 import inspect
 from weakref import WeakSet, WeakKeyDictionary
 from collections import deque
-
-
+from functools import partial
 
 
 class Signal(object):
@@ -25,22 +24,43 @@ class Signal(object):
 	
 	queues = {"default" : deque()}
 	
-	def __init__(self):
+	def __init__(self, queue="", useQueue=False):
+		""":param queue : name of queue to use, or external queue object """
 		self._functions = WeakSet()
 		self._methods = WeakKeyDictionary()
 
-		# event queue support
-		self._queue = None
+		# is signal active
+		self._active = True
 
-	def __call__(self, *args, **kargs):
+		# event queue support
+		self._useQueue = useQueue
+		self._queue = queue or "default"
+
+	def __call__(self, *args, **kwargs):
+
+		if not self._active:
+			return
+
+		queue = self.getQueue()
 		# Call handler functions
 		for func in self._functions:
-			func(*args, **kargs)
+			if self._useQueue:
+				queue.append(partial(func, *args, **kwargs))
+			else:
+				func(*args, **kwargs)
 
 		# Call handler methods
 		for obj, funcs in self._methods.items():
 			for func in funcs:
-				func(obj, *args, **kargs)
+				if self._useQueue:
+					queue.append(partial(func, obj, *args, **kwargs))
+				else:
+					func(obj, *args, **kwargs)
+
+	def activate(self):
+		self._active = True
+	def mute(self):
+		self._active = False
 
 	def getQueue(self, name="default", create=True):
 		"""return one of the event queues attended by signal objects"""

@@ -2,16 +2,177 @@
 """ python functions used in tree and associated objects"""
 from __future__ import print_function
 import importlib
-import string
+import string, difflib
+from collections import deque, namedtuple
+import sys, os
 from sys import version_info
 
+import inspect
+
+
 if version_info[0] < 3: # hacky 2-3 compatibility
-	pyTwo = False
+	pyTwo = True
 	basestring = str
 else:
-	pyTwo = True
+	pyTwo = False
 
-import inspect
+
+class DiffUndo(object):
+	""" maintain undo records based on serialised
+	object data
+	we assume that any object using this contains only simple datatypes
+
+	At the moment there is no benefit to using difflib -
+	redo this later saving opcodes and only diffed stretches
+	"""
+
+	diffKeys = [
+		"replaceIndex", "replaceData",
+		"deleteIndices", # tuple of (start, end)
+		"insertIndex", "insertData"
+	]
+	replaceData = namedtuple("replaceData", ["start", "end", "data"])
+	insertData = namedtuple("insertData", ["index", "data"])
+	deleteData = namedtuple("deleteData", ["start", "end", "data"])
+
+	def __init__(self, baseSeq="", fromStringFn=None):
+		""" only works properly on strings for now
+		:param baseSeq : base string sequence for initial state
+		:param fromStringFn : function or class passed string result of operations"""
+		# base type to return sequence as
+
+		self.prevSeq = str(baseSeq)
+		self.fromStringFn = fromStringFn or str
+		# sequence of diffs
+		self.undoDiffs = []
+		# [ [(diffDataA), (diffDataB)], [(diffDataC)] ] etc
+		self.redoDiffs = []
+		self.differ = difflib.Differ()
+
+	def makeDiffData(self, seqA, seqB):
+		data = []
+		result = difflib.SequenceMatcher(
+			isjunk=None,
+			a=seqA,
+			b=seqB,
+			autojunk=False).get_opcodes()
+		for op, aStartIndex, aEndIndex, \
+			bStartIndex, bEndIndex in result:
+			if op == "replace" : # can do dicts for portability
+				data.append(self.replaceData(
+					start=aStartIndex,
+					end=aEndIndex,
+				    data=seqB[ bStartIndex : bEndIndex ]))
+			elif op == "insert" :
+				data.append(self.insertData(
+					index=aStartIndex,
+					data=seqB[bStartIndex: bEndIndex]))
+			elif op == "delete" :
+				data.append(self.deleteData(
+					start=aStartIndex, end=aEndIndex,
+					data=seqA[aStartIndex:aEndIndex]))
+		return data
+
+	def applyDiffData(self, data, baseSeq=""):
+		"""	given a single diff data tuple, apply it to the sequence
+		and return it
+		:param data: diff data namedtuple
+		:param baseSeq:
+		:return:
+		"""
+		if type(data) == self.replaceData:
+			baseSeq = baseSeq[:data.start] + data.data + \
+			          baseSeq[data.end:]
+		elif type(data) == self.insertData:
+			baseSeq = baseSeq[:data.index] + data.data + baseSeq[data.index:]
+		elif type(data) == self.deleteData:
+			baseSeq = baseSeq[:data.start] + baseSeq[data.end:]
+		return baseSeq
+		# return self.baseType(baseSeq)
+
+	def do(self, newSeq):
+		""" given new string sequence, extract diffs
+		against existing previous sequence,
+		append diff to stack """
+		if newSeq == self.prevSeq:
+			return
+		result = self.makeDiffData(newSeq, self.prevSeq)
+		self.undoDiffs.append(result)
+
+		self.redoDiffs.clear()
+		self.prevSeq = newSeq
+
+	def undo(self):
+		""" restore prevSeq to its previous state by applying last diff,
+		then return it """
+		undoData = self.undoDiffs.pop(-1)
+		found = str(self.prevSeq)
+		#for data in undoData[::-1]:
+		for data in reversed(undoData):
+			found = self.applyDiffData(data, found)
+
+		# extract inverse deltas
+		self.redoDiffs.append(self.makeDiffData(found, self.prevSeq))
+		self.prevSeq = found
+		return self.fromStringFn(found)
+
+	def redo(self):
+		""" apply inverse of undo change """
+		redoData = self.redoDiffs.pop(-1)
+		found = str(self.prevSeq)
+		for data in reversed(redoData):
+			found = self.applyDiffData(data, found)
+		# extract inverse deltas
+		self.undoDiffs.append(self.makeDiffData( found, self.prevSeq))
+		self.prevSeq = found
+		return self.fromStringFn(found)
+
+	def serialise(self):
+		""" return dict of all stored undo and redo actions """
+		return {
+			"seq" : self.prevSeq,
+			"undo" : self.undoDiffs,
+			"redo" : self.redoDiffs
+		}
+
+	@classmethod
+	def fromDict(cls, data, sequence=None):
+		obj = cls(sequence or data["sequence"])
+		obj.undoDiffs = data["undo"]
+		obj.redoDiffs = data["redo"]
+		return obj
+
+
+serialisedBase = "{'?VALUE': 'tree root', '?CHILDREN': [{'?VALUE': 'first branch', '?CHILDREN': [{'?VALUE': 'first leaf', '?NAME': 'leafA'}], '?NAME': 'branchA'}, {'?VALUE': 2, '?NAME': 'branchB'}], '?NAME': 'testRoot'}"
+
+intermediate = "[{'?VALUE': 'first leaf', ___ '?NAME': 'leafA'}]"
+
+serialisedNew = "{'?': 'tree ACSDADroot', '?CHILDREN': [{'?VALUE': 'first branch', '?CHILDREN': [{'?VALUE': 'NEW LEAF', '?NAME': 'leafA'}], '?NAME': 'branchA'}, {'?VALUE': 2, '?NAME': 'branchB'}], '?NAME': 'testRoot'}"
+
+serialisedBase = "'?VALUE': 'tree root', '?CHILDREN'"
+intermediate = "'?VALUE': tr_____ot', '?CHILDREN'"
+serialisedNew = "'?VAL': 'tree', '?CHILDREN'"
+
+if __name__ == '__main__':
+
+	print("base", serialisedBase)
+
+	obj = DiffUndo(serialisedBase)
+
+	obj.do(intermediate)
+
+	obj.do(serialisedNew)
+	print("undo", obj.undo())
+	print("undo", obj.undo())
+	print("redo", obj.redo())
+	print("redo", obj.redo())
+	# print("undo", obj.undo())
+	# print("redo", obj.redo())
+
+
+
+
+
 
 
 def trimArgsKwargs(fn, givenArgs, givenKwargs=None):
@@ -60,15 +221,18 @@ def incrementName(name, currentNames=None):
 	return name
 
 
-def safeLoadModule(mod, logFunction=None):
+def safeLoadModule(modName, force=False, logFunction=None):
 	"""takes string name of module
 	"""
 	logFunction = logFunction or print
 	module = None
+	if modName in sys.modules and not force:
+		logFunction("module {} already loaded, skipping".format(modName))
+		return sys.modules[modName]
 	try:
-		module = importlib.import_module(mod)
+		module = importlib.import_module(modName)
 	except ImportError() as e:
-		logFunction("ERROR in loading module {}".format(mod))
+		logFunction("ERROR in loading module {}".format(modName))
 		logFunction("error is {}".format(str(e)))
 	return module
 
@@ -101,6 +265,11 @@ def loadObjectClass(objData):
 		"?CLASS" : class name, }
 		OR
 		tuple of (class name, module path) """
+	try:
+		basestring
+	except:
+		basestring = str
+
 	if isinstance(objData, dict):
 		for i in ("?MODULE", "?CLASS"):
 			if not objData.get(i):
@@ -108,6 +277,7 @@ def loadObjectClass(objData):
 				return None
 		path = objData["?MODULE"]
 		className = objData["?CLASS"]
+
 
 	elif isinstance(objData, (tuple, list)):
 		# sequence [ class, modulepath, regenFn ]

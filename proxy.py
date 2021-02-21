@@ -10,14 +10,16 @@ class CallWrapper(object):
 		self._fn = fn
 
 	def preCall(self, *args, **kwargs):
+		return args, kwargs
 		pass
 	def postCall(self, result, *args, **kwargs):
+		return result
 		pass
 
 	def __call__(self, *args, **kwargs):
-		self.preCall(*args, **kwargs)
+		args, kwargs = self.preCall(*args, **kwargs)
 		result = self._fn(*args, **kwargs)
-		self.postCall(result, *args, **kwargs)
+		result = self.postCall(result, *args, **kwargs)
 		return result
 
 
@@ -33,7 +35,7 @@ class Proxy(ABC):
 	"""
 	#__slots__ = ["_obj", "__weakref__"]
 	_class_proxy_cache = {} # { class : { class cache } }
-	_proxyAttrs = ("__proxyObjRef", "_proxyObj", "_proxyDepth", "_proxyChildren")
+	_proxyAttrs = ("__proxyObjRef", "_proxyObj", "_proxyChildren")
 	_proxyObjKey = "__proxyObjRef" # attribute pointing to object
 	# _methodHooks = {}
 
@@ -43,10 +45,25 @@ class Proxy(ABC):
 
 	@property
 	def _proxyObj(self):
-		return self._returnProxy()
+		#return self._returnProxy()
+		return object.__getattribute__(self, self._proxyObjKey)
 	@_proxyObj.setter
 	def _proxyObj(self, val):
 		object.__setattr__(self, self._proxyObjKey, val)
+
+	# @property
+	# def _baseObj(self):
+	# 	pass
+	# @_baseObj.setter
+	# def _baseObj(self, val):
+	# 	pass
+
+	# @property
+	# def _test(self):
+	# 	pass
+	# @_test.setter
+	# def _test(self, val):
+	# 	pass
 
 
 	def _returnProxy(self):
@@ -55,24 +72,42 @@ class Proxy(ABC):
 		return object.__getattribute__(self, self._proxyObjKey)
 
 	# proxying (special cases)
-	def __getattribute__(self, name):
-	# def __getattr__(self, name):
-		if name == "__eq__":
-			print("base proxy getattr __eq__")
+	# def __getattribute__(self, name):
+	def __getattr__(self, name):
+
 		try: # look up attribute on proxy class first
 			return object.__getattribute__(self, name)
 		except:
+			obj = object.__getattribute__(self, "__proxyObjRef")
+
 			#return getattr( self._proxyObj, name)
-			return getattr( object.__getattribute__(self, "_proxyObj"), name)
+			return getattr( obj, name)
 
 	def __delattr__(self, name):
 		delattr(object.__getattribute__(self, self._proxyObjKey), name)
 
 	def __setattr__(self, name, value):
-		if name in self.__pclass__._proxyAttrs:
-			object.__setattr__(self, name, value)
-		else:
-			setattr(self._proxyObj, name, value)
+		try:
+			if name in self.__pclass__._proxyAttrs:
+				# check for property
+				at = getattr(self.__pclass__, name, None)
+				if isinstance(at, property):
+					print("prop", name, at)
+					if at.fset is None:
+						raise AttributeError(
+							"Cannot set proxy property {}".format(name))
+					at.fset(self, value)
+					return
+				#super(Proxy, self).__setattr__(name, value)
+				object.__setattr__(self, name, value)
+			else:
+				setattr(self._proxyObj, name, value)
+		except Exception as e:
+			#print("p attrs {}".format(self.__pclass__._proxyAttrs))
+			print("error name {}, value {}".format(name, value))
+			print("type name ", type(name))
+			raise e
+
 
 	def __nonzero__(self):
 		return bool(self._proxyObj)
@@ -122,13 +157,18 @@ class Proxy(ABC):
 
 		"""
 		# combine declared proxy attributes
-		cls._proxyAttrs = set(cls._proxyAttrs)
+		# cls._proxyAttrs = set(cls._proxyAttrs)
+		allProxyAttrs = set(cls._proxyAttrs)
 		for base in cls.__mro__:
 			#if base in (object, ABC): break
 			if getattr(base, "_proxyAttrs", None):
-				cls._proxyAttrs.update(base._proxyAttrs)
+				#print(base.__name__, base._proxyAttrs)
+				#cls._proxyAttrs.update(base._proxyAttrs)
+				allProxyAttrs.update(base._proxyAttrs)
 
 		def make_method(name):
+			# print("wrap {} for class {}".format(name, targetCls))
+			# works even for builtins
 			def method(self, *args, **kw):
 				#print("m " + name)
 				return getattr(
@@ -137,6 +177,7 @@ class Proxy(ABC):
 			return method
 
 		namespace = {}
+		namespace["_proxyAttrs"] = allProxyAttrs
 		for name in cls._special_names:
 			# do not override methods if they appear in class
 			if hasattr(targetCls, name) \
@@ -145,17 +186,18 @@ class Proxy(ABC):
 		newCls = type("{}({})".format(cls.__name__, targetCls.__name__),
 		              (cls,), namespace)
 		newCls.register(targetCls)
+		print("new cls pattrs ", newCls._proxyAttrs)
 
 		return newCls
 
-	@property
-	def __class__(self):
-		# supplant __class__ on newCls to return target
-		# see the research for less weird options
-		try: # should work for proxies of proxies
-			return self._proxyObj.__class__
-		except:
-			return type(self._proxyObj)
+	# @property
+	# def __class__(self):
+	# 	# supplant __class__ on newCls to return target
+	# 	# see the research for less weird options
+	# 	try: # should work for proxies of proxies
+	# 		return self._proxyObj.__class__
+	# 	except:
+	# 		return type(self._proxyObj)
 
 	@property
 	def __pclass__(self):

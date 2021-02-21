@@ -1,7 +1,11 @@
 
 import copy
 
+import importlib
+import proxy
+importlib.reload(proxy)
 from proxy import Proxy
+
 from main import Tree
 
 """ so it turns out this is really hard 
@@ -41,15 +45,53 @@ class Transform(object):
 
 class Delta(Proxy):
 	""" delta-tracking wrapper
-	also adapted from 496741 """
-	_proxyAttrs = ("_baseObj", "_mask")
+
+	it is necessary to shuffle the stages regarding when
+	the "live" proxy is returned, and when we want the output
+	of the delta
+
+	_stack is the list of accrued transforms
+	_mask is the final mask to apply to object?
+
+
+	__baseObjRef is the live object
+	__proxyObjIntermediate is an internal variable safe from
+		main proxy machinery
+
+
+
+	_proxyObj property now returns a new object each time -
+	the product of the live base object with the delta's mask
+
+
+	"""
+	_proxyAttrs = ("_mask",
+	               "_stack",
+	               "_baseObj",
+	               "_baseObjRef",
+	               "_proxyObjIntermediate",
+	               )
 
 	def __init__(self, obj, deep=False):
 		super(Delta, self).__init__(obj)
+		#print("proxyAttrs", self._proxyAttrs)
+		self._baseObjRef = 3
 		self._baseObj = obj # reference to base object to draw from
-		self._proxyObjRef = copy.copy(obj)
+		c = copy.copy(obj)
+		self._proxyObj = c
 		self._mask = { "added" : {}, "modified" : {}, "removed" : {} }
-		self._extractMask(self._baseObj, self._proxyObjRef)
+		self._extractMask(baseObj=self._baseObj, deltaObj=self._proxyObj)
+
+	@property
+	def _baseObj(self):
+		""" return the live base object known to the delta -
+		this is the same as Proxy's _proxyObj """
+		return self._baseObjRef
+	@_baseObj.setter
+	def _baseObj(self, obj):
+		#print("p self", self, str(self), type(self)) # correct
+		#self.__dict__["__baseObjRef"] = obj
+		self._baseObjRef = obj
 
 	def _returnProxy(self):
 		""" runs mask operation every time proxy is accessed
@@ -64,11 +106,11 @@ class Delta(Proxy):
 		""" applies delta mask to product object """
 
 	def product(self):
-		self._extractMask(self._baseObj, self._proxyObjRef)
+		self._extractMask(self._baseObj, self.__proxyObjRef)
 		#debug(self._mask)
 		newObj = copy.copy(self._baseObj)
 		self.applyMask(newObj)
-		self._proxyObjRef = newObj
+		#self.__proxyObjRef = newObj
 		return newObj
 
 	def serialise(self):
@@ -78,11 +120,6 @@ class Delta(Proxy):
 	def deserialise(cls, data, baseObj):
 		""" loads delta object from dict and reapplies to baseObj """
 		pass
-
-# class ProxyDelta(Proxy, Delta):
-#
-# 	_proxyAttrs = (#"_proxyObjRef", "_proxyObj",
-# 	               "_baseObj", "_mask")
 
 
 def deltaTypeForObj(obj):
@@ -94,6 +131,36 @@ def deltaTypeForObj(obj):
 	else:
 		return None
 
+class ListDelta(Delta):
+	""" basic, indices not working """
+
+	def __init__(self, obj, deep=False):
+		super(ListDelta, self).__init__(obj, deep)
+		#Delta.__init__(self, obj, deep)
+		# if deep:
+		# 	# iterate over list entries to check for complex data
+		# 	for i, entry in enumerate(self):
+		# 		# if entry is complex, wrap it with a delta object
+		# 		if deltaTypeForObj(entry):
+		# 			continue
+		# 			self[i] = deltaTypeForObj(entry)(entry, deep=True)
+		# 			self._proxyChildren.add(self[i])
+
+	def _extractMask(self, baseObj=None, deltaObj=None):
+		self._mask["added"] = {
+			self._proxyObj.index(i) : i for i in self._proxyObj \
+				if not i in self._baseObj }
+	def applyMask(self, newObj=None):
+		for index, val in self._mask["added"]:
+			try:
+				self._proxyObj.insert(index, val)
+			except:
+				self._proxyObj.append(val)
+
+"""
+before looking up ANYTHING or any method on delta, extract new
+object from applying the mask and update the proxy obj
+"""
 
 class DictDelta(Delta):
 
@@ -120,29 +187,6 @@ class DictDelta(Delta):
 		self._proxyObj.update(self._mask["added"])
 		self._proxyObj.update(self._mask["modified"])
 
-class ListDelta(Delta):
-	""" basic, indices not working """
-
-	def __init__(self, obj, deep=False):
-		super(ListDelta, self).__init__(obj, deep)
-		if deep:
-			# iterate over list entries to check for complex data
-			for i, entry in enumerate(self):
-				# if entry is complex, wrap it with a delta object
-				if deltaTypeForObj(entry):
-					self[i] = deltaTypeForObj(entry)(entry, deep=True)
-					self._proxyChildren.add(self[i])
-
-	def _extractMask(self):
-		self._mask["added"] = {
-			self._proxyObj.index(i) : i for i in self._proxyObj \
-				if not i in self._baseObj }
-	def applyMask(self, newObj=None):
-		for index, val in self._mask["added"]:
-			try:
-				self._proxyObj.insert(index, val)
-			except:
-				self._proxyObj.append(val)
 
 
 class TreeDelta(Delta):

@@ -1,26 +1,8 @@
 from weakref import WeakSet
 from abc import ABC
 from functools import wraps
+from types import FunctionType, MethodType, BuiltinFunctionType
 
-
-class CallWrapper(object):
-	""" pseudo-decorator
-	for pre- and post-call wrapping of specific function """
-	def __init__(self, fn, *args, **kwargs):
-		self._fn = fn
-
-	def preCall(self, *args, **kwargs):
-		return args, kwargs
-		pass
-	def postCall(self, result, *args, **kwargs):
-		return result
-		pass
-
-	def __call__(self, *args, **kwargs):
-		args, kwargs = self.preCall(*args, **kwargs)
-		result = self._fn(*args, **kwargs)
-		result = self.postCall(result, *args, **kwargs)
-		return result
 
 
 class Proxy(ABC):
@@ -35,12 +17,12 @@ class Proxy(ABC):
 	"""
 	#__slots__ = ["_obj", "__weakref__"]
 	_class_proxy_cache = {} # { class : { class cache } }
-	_proxyAttrs = ("__proxyObjRef", "_proxyObj", "_proxyChildren")
-	_proxyObjKey = "__proxyObjRef" # attribute pointing to object
+	_proxyAttrs = ("_proxyObjRef", "_proxyObj", "_proxyChildren")
+	_proxyObjKey = "_proxyObjRef" # attribute pointing to object
 	# _methodHooks = {}
 
 	def __init__(self, obj):
-		#self.__proxyObjRef = obj # set already in __new__
+		#self._proxyObjRef = obj # set already in __new__
 		self._proxyChildren = WeakSet() # make this lazy if needed
 
 	@property
@@ -50,21 +32,6 @@ class Proxy(ABC):
 	@_proxyObj.setter
 	def _proxyObj(self, val):
 		object.__setattr__(self, self._proxyObjKey, val)
-
-	# @property
-	# def _baseObj(self):
-	# 	pass
-	# @_baseObj.setter
-	# def _baseObj(self, val):
-	# 	pass
-
-	# @property
-	# def _test(self):
-	# 	pass
-	# @_test.setter
-	# def _test(self, val):
-	# 	pass
-
 
 	def _returnProxy(self):
 		""" hook for extending proxy behaviour
@@ -78,7 +45,7 @@ class Proxy(ABC):
 		try: # look up attribute on proxy class first
 			return object.__getattribute__(self, name)
 		except:
-			obj = object.__getattribute__(self, "__proxyObjRef")
+			obj = object.__getattribute__(self, "_proxyObjRef")
 
 			#return getattr( self._proxyObj, name)
 			return getattr( obj, name)
@@ -89,16 +56,6 @@ class Proxy(ABC):
 	def __setattr__(self, name, value):
 		try:
 			if name in self.__pclass__._proxyAttrs:
-				# check for property
-				at = getattr(self.__pclass__, name, None)
-				if isinstance(at, property):
-					print("prop", name, at)
-					if at.fset is None:
-						raise AttributeError(
-							"Cannot set proxy property {}".format(name))
-					at.fset(self, value)
-					return
-				#super(Proxy, self).__setattr__(name, value)
 				object.__setattr__(self, name, value)
 			else:
 				setattr(self._proxyObj, name, value)

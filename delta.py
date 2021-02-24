@@ -2,9 +2,16 @@
 import copy
 
 import importlib
+
+from types import FunctionType, MethodType, BuiltinFunctionType, BuiltinMethodType, LambdaType
+
+from six import iteritems
+import functools
+
 import proxy
-importlib.reload(proxy)
 from proxy import Proxy
+from lib import trimArgsKwargs
+
 
 from main import Tree
 
@@ -43,6 +50,57 @@ class Transform(object):
 	""" represents a (reversible?) transformation
 	to be applied to a given object """
 
+
+# def f():
+# 	pass
+
+class CallWrapper(object):
+	""" pseudo-decorator
+	for pre- and post-call wrapping of specific function
+	either subclass for special behaviour
+	or just pass in specific functions to run
+
+	replaceResult allows post call to intercept
+	base function result
+	"""
+	def __init__(self, fn, beforeFn=None, afterFn=None,
+	             passParams=False,
+	             replaceResult=False,
+	             *args, **kwargs):
+		self.fn = fn
+		self.beforeFn = beforeFn
+		self.afterFn = afterFn
+		self.replaceResult = replaceResult
+		self.passParams = passParams
+
+	def preCall(self, *args, **kwargs):
+		#print("preCall")
+		if self.beforeFn:
+			#print("beforeFn", self.beforeFn)
+			args, kwargs = trimArgsKwargs(self.beforeFn, args, kwargs)
+			#print("trimArgs")
+			result = self.beforeFn(*args, **kwargs)
+		return args, kwargs
+
+	def postCall(self, result, *args, **kwargs):
+		if self.afterFn:
+			#print("post call")
+			args = [result] + list(args)
+			args, kwargs = trimArgsKwargs(self.afterFn, args, kwargs)
+			fnResult = self.afterFn(*args, **kwargs)
+
+		return result
+
+	def __call__(self, *args, **kwargs):
+		# args, kwargs = self.preCall(*args, **kwargs)
+		self.preCall(*args, **kwargs)
+		print("")
+		print("main call", self.fn, args, kwargs)
+		result = self.fn(*args, **kwargs)
+		# result = self.postCall(result, *args, **kwargs)
+		self.postCall(result, *args, **kwargs)
+		return result
+
 class Delta(Proxy):
 	""" delta-tracking wrapper
 
@@ -61,7 +119,7 @@ class Delta(Proxy):
 
 
 	_proxyObj property now returns a new object each time -
-	the product of the live base object with the delta's mask
+	the _product of the live base object with the delta's mask
 
 
 	"""
@@ -71,16 +129,68 @@ class Delta(Proxy):
 	               "_baseObjRef",
 	               "_proxyObjIntermediate",
 	               )
+	_deltaMethods = (
+		"_product", "_extractMask", "_applyMask"
+	)
 
 	def __init__(self, obj, deep=False):
 		super(Delta, self).__init__(obj)
 		#print("proxyAttrs", self._proxyAttrs)
-		self._baseObjRef = 3
 		self._baseObj = obj # reference to base object to draw from
-		c = copy.copy(obj)
+		c = self._copyBaseObj()
 		self._proxyObj = c
 		self._mask = { "added" : {}, "modified" : {}, "removed" : {} }
-		self._extractMask(baseObj=self._baseObj, deltaObj=self._proxyObj)
+		#self._extractMask(baseObj=self._baseObj, deltaObj=self._proxyObj)
+
+	def __getattr__(self, item):
+
+		if item in self.__dict__.keys():
+			return object.__getattribute__(self, item)
+
+		#self._applyMask(self._copyBaseObj(), setProxy=True)
+		result = super(Delta, self).__getattr__(item)
+		if isinstance(result, (
+				MethodType, FunctionType,
+				BuiltinFunctionType, BuiltinMethodType,
+				LambdaType
+		)):
+			#print("wrapping ", item)
+			# print("fn bound base {}".format(result.__self__ is
+			#                                 self._baseObj))
+			# print("fn bound proxy {}".format(result.__self__ is
+			#                                 self._proxyObj))
+			applyLam = lambda : self._applyMask(
+				self._copyBaseObj(),
+				#self._baseObj,
+				setProxy=True)
+			extractLam = lambda : self._extractMask()
+			# wrap = CallWrapper(result, beforeFn=self._applyMask,
+			#                    afterFn=self._extractMask)
+			wrap = CallWrapper(result,
+			                   #beforeFn=applyLam,
+			                   afterFn=extractLam
+			                   )
+			result = wrap
+		return result
+
+	@property
+	def _proxyObj(self):
+		""" _proxyObj on delta proxy always returns PRODUCT
+		internally, access the true current proxy object with
+		_proxyObjRef """
+		return self._product()
+
+	@_proxyObj.setter
+	def _proxyObj(self, val):
+		self._proxyObjRef = val
+
+
+	def _copyBaseObj(self):
+		""" returns new copy of base object - override for
+		more complex objects"""
+		#obj = obj or self._baseObj
+		obj = self._baseObj
+		return copy.copy(obj)
 
 	@property
 	def _baseObj(self):
@@ -89,28 +199,27 @@ class Delta(Proxy):
 		return self._baseObjRef
 	@_baseObj.setter
 	def _baseObj(self, obj):
-		#print("p self", self, str(self), type(self)) # correct
-		#self.__dict__["__baseObjRef"] = obj
 		self._baseObjRef = obj
 
-	def _returnProxy(self):
-		""" runs mask operation every time proxy is accessed
-		never said this would be fast """
-		#return super(Delta, self)._returnProxy()
-		return self.product()
+	# def _returnProxy(self):
+	# 	""" runs mask operation every time proxy is accessed
+	# 	never said this would be fast """
+	# 	return self._product()
 
 
 	def _extractMask(self, baseObj=None, deltaObj=None):
 		""" compares proxy object to base, collates delta to mask """
-	def applyMask(self, newObj=None):
-		""" applies delta mask to product object """
+	def _applyMask(self, newObj=None, setProxy=False):
+		""" applies delta mask to _product object
+		_product object is passed in as basic copy
+		of base object """
 
-	def product(self):
-		self._extractMask(self._baseObj, self.__proxyObjRef)
+	def _product(self):
+		# self._extractMask(self._baseObj, self._proxyObjRef)
 		#debug(self._mask)
 		newObj = copy.copy(self._baseObj)
-		self.applyMask(newObj)
-		#self.__proxyObjRef = newObj
+		self._applyMask(newObj)
+		self._proxyObjRef = newObj
 		return newObj
 
 	def serialise(self):
@@ -136,26 +245,42 @@ class ListDelta(Delta):
 
 	def __init__(self, obj, deep=False):
 		super(ListDelta, self).__init__(obj, deep)
-		#Delta.__init__(self, obj, deep)
-		# if deep:
-		# 	# iterate over list entries to check for complex data
-		# 	for i, entry in enumerate(self):
-		# 		# if entry is complex, wrap it with a delta object
-		# 		if deltaTypeForObj(entry):
-		# 			continue
-		# 			self[i] = deltaTypeForObj(entry)(entry, deep=True)
-		# 			self._proxyChildren.add(self[i])
+		if deep:
+			# iterate over list entries to check for complex data
+			for i, entry in enumerate(self):
+				# if entry is complex, wrap it with a delta object
+				if deltaTypeForObj(entry):
+					continue
+					self[i] = deltaTypeForObj(entry)(entry, deep=True)
+					self._proxyChildren.add(self[i])
 
 	def _extractMask(self, baseObj=None, deltaObj=None):
+		#print("extractMask", self._mask)
+		#print(self._baseObj, self._proxyObjRef)
+		#print(self._mask)
 		self._mask["added"] = {
-			self._proxyObj.index(i) : i for i in self._proxyObj \
+			self._proxyObjRef.index(i) : i for i in self._proxyObjRef \
 				if not i in self._baseObj }
-	def applyMask(self, newObj=None):
-		for index, val in self._mask["added"]:
+
+		#print("mask", self._mask)
+
+	def _applyMask(self, newObj=None, setProxy=False):
+		#print("applyMask", newObj)
+		#print("mask {}".format(self._mask))
+		# print("newObj {} base".format(newObj is self._baseObj))
+		# print("newObj {} proxy".format(newObj is self._proxyObj))
+		# return
+
+		for index, val in iteritems(self._mask["added"]):
 			try:
-				self._proxyObj.insert(index, val)
+				newObj.insert(index, val)
 			except:
-				self._proxyObj.append(val)
+				newObj.append(val)
+		# # maybe
+		if setProxy:
+			#self._proxyObj = newObj
+			self._proxyObjRef = newObj
+		return newObj
 
 """
 before looking up ANYTHING or any method on delta, extract new
@@ -183,7 +308,7 @@ class DictDelta(Delta):
 				self._baseObj.get(pK) != pV }
 		# added and modified functionally the same here
 
-	def applyMask(self, newObj=None):
+	def _applyMask(self, newObj=None):
 		self._proxyObj.update(self._mask["added"])
 		self._proxyObj.update(self._mask["modified"])
 
@@ -227,7 +352,7 @@ class TreeDelta(Delta):
 		else: self._mask["value"] = None
 
 
-	def applyMask(self, newObj=None):
+	def _applyMask(self, newObj=None):
 		for index, branch in self._mask["added"].iteritems():
 			newObj.addChild(branch, index)
 		if self._mask.get("value") is not None:

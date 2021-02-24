@@ -115,7 +115,25 @@ class TestDeltaList(unittest.TestCase):
 
 	def test_baseListDelta(self):
 		d = ListDelta(self.baseList)
-		print(d)
+
+		self.assertEqual(d, self.baseList)
+
+		d.append("appItem")
+
+		self.assertEqual(d, self.baseList + ["appItem"])
+		self.assertFalse(d == self.baseList)
+
+		self.baseList.insert(1, "insItem")
+
+		self.assertEqual(d, d._product())
+
+		print("")
+
+		print(d._product())
+		print(self.baseList)
+		print(d, "t")
+		print(d._product())
+
 
 
 

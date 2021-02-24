@@ -400,7 +400,6 @@ class TreeBase(object):
 		return index
 
 	def items(self):
-		# return self._branchMap.items()
 		return six.iteritems(self._branchMap)
 
 	def values(self):
@@ -418,14 +417,27 @@ class TreeBase(object):
 		# return self._branchMap.items()
 		return six.iteritems(self._branchMap)
 
-	def allBranches(self, includeSelf=True):
+	def allBranches(self, includeSelf=True, depthFirst=True):
 		""" returns list of all tree objects
 		depth first
 		:returns [Tree]"""
 		found = [ self ] if includeSelf else []
-		for i in self.branches:
-			found.extend(i.allBranches())
+		if depthFirst:
+			for i in self.branches:
+				found.extend(i.allBranches(
+					includeSelf=True, depthFirst=True))
+		else:
+			found.extend(self.branches)
+			for i in self.branches:
+				found.extend(i.allBranches(
+					includeSelf=False, depthFirst=False))
 		return found
+
+	def iterAllBranches(self):
+		""" not necessary yet, but will be for colossal trees
+		like file systems
+		recursive iterators only possible in python 3 though"""
+		pass
 
 	def _address(self, prev=None):
 		"""returns string path from root to this tree

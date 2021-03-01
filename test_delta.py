@@ -13,7 +13,7 @@ else:
 import pprint
 
 from tree import Tree, Signal
-from delta import Delta, DictDelta, ListDelta, TreeDelta
+from delta import DeltaProxy, DictDelta, ListDeltaProxy, TreeDelta
 from proxy import Proxy
 
 
@@ -25,7 +25,7 @@ def makeTestObjects():
 
 	baseDict = {"a" : "b", 5 : 65}
 
-	baseList = ["a", "c", "b", 49494, "e"]
+	baseList = ["a", "b", "c", "d"]
 
 	return {"tree" : tempTree, "baseDict" : baseDict,
 	        "list" : baseList
@@ -114,16 +114,20 @@ class TestDeltaList(unittest.TestCase):
 		self.baseList = makeTestObjects()["list"]
 
 	def test_baseListDelta(self):
-		d = ListDelta(self.baseList)
+		d = ListDeltaProxy(self.baseList)
 
 		self.assertEqual(d, self.baseList)
 
 		d.append("appItem")
 
+		print(d._deltaStack)
+
 		self.assertEqual(d, self.baseList + ["appItem"])
 		self.assertFalse(d == self.baseList)
 
 		self.baseList.insert(1, "insItem")
+
+		self.assertEqual(d, ["a", "insItem", "b", "c", "d", "appItem"])
 
 		self.assertEqual(d, d._product())
 
@@ -133,6 +137,10 @@ class TestDeltaList(unittest.TestCase):
 		print(self.baseList)
 		print(d, "t")
 		print(d._product())
+
+		d._baseObj = ["newBase"]
+
+		print(d)
 
 
 

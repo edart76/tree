@@ -609,7 +609,7 @@ class TreeBase(object):
 		serial = {
 			"?NAME" : self.name,
 		}
-		if self.value:
+		if self.value is not None:
 			serial["?VALUE"] = self.value
 		if self.branches:
 			serial["?CHILDREN"] = [i.serialise() for i in self._branchMap.values()]

@@ -26,11 +26,7 @@ class DiffUndo(object):
 	redo this later saving opcodes and only diffed stretches
 	"""
 
-	diffKeys = [
-		"replaceIndex", "replaceData",
-		"deleteIndices", # tuple of (start, end)
-		"insertIndex", "insertData"
-	]
+
 	replaceData = namedtuple("replaceData", ["start", "end", "data"])
 	insertData = namedtuple("insertData", ["index", "data"])
 	deleteData = namedtuple("deleteData", ["start", "end", "data"])

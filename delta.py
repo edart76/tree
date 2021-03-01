@@ -8,9 +8,15 @@ from types import FunctionType, MethodType, BuiltinFunctionType, BuiltinMethodTy
 from six import iteritems
 import functools
 
+from collections import namedtuple
+
+import difflib
+
+import uuid
 import proxy
 from proxy import Proxy
 from lib import trimArgsKwargs
+
 
 
 from main import Tree
@@ -39,20 +45,27 @@ a similar transformation could run over data to mirror it in space, for example
 reversibility is not important for this use, but it may make the result
 more robust as a whole to pursue it
 
-Q: why don't I use deepdiff?
-A: I need 2.7 support for now, also deepdiff is too
-complicated for me to understand easily if something goes wrong with it
+a transformation might be defined on a simple tuple, or on
+an entire tree -
+absolutely no idea how to represent it properly in ui.
+Might be overkill to even formalise this in objects at all,
+just use the normal delta system, along with specific
+tool actions
+
+
+in the new structure, we have both a custom transform proxy container
+and a separate delta object,
+for each new class 
+
 """
 
-
-
 class Transform(object):
-	""" represents a (reversible?) transformation
-	to be applied to a given object """
-
-
-# def f():
-# 	pass
+	""" atomic transformation on data """
+	# def apply(self):
+	# 	raise NotImplementedError
+	# 	pass
+	# def revert(self):
+	# 	pass
 
 class CallWrapper(object):
 	""" pseudo-decorator
@@ -101,76 +114,35 @@ class CallWrapper(object):
 		self.postCall(result, *args, **kwargs)
 		return result
 
-class Delta(Proxy):
+
+class TransformProxy(Proxy):
 	""" delta-tracking wrapper
 
-	it is necessary to shuffle the stages regarding when
-	the "live" proxy is returned, and when we want the output
-	of the delta
-
-	_stack is the list of accrued transforms
-	_mask is the final mask to apply to object?
-
-
-	__baseObjRef is the live object
-	__proxyObjIntermediate is an internal variable safe from
-		main proxy machinery
-
-
-
-	_proxyObj property now returns a new object each time -
-	the _product of the live base object with the delta's mask
-
+	proxy maintaining a stack of transformations to perform
+	on this object - on query, stack is applied
+	and nw result object returned
 
 	"""
-	_proxyAttrs = ("_mask",
-	               "_stack",
+	_proxyAttrs = ("_transformStack",
 	               "_baseObj",
 	               "_baseObjRef",
 	               "_proxyObjIntermediate",
 	               )
-	_deltaMethods = (
-		"_product", "_extractMask", "_applyMask"
-	)
 
 	def __init__(self, obj, deep=False):
-		super(Delta, self).__init__(obj)
-		#print("proxyAttrs", self._proxyAttrs)
+		super(TransformProxy, self).__init__(obj)
 		self._baseObj = obj # reference to base object to draw from
 		c = self._copyBaseObj()
 		self._proxyObj = c
-		self._mask = { "added" : {}, "modified" : {}, "removed" : {} }
-		#self._extractMask(baseObj=self._baseObj, deltaObj=self._proxyObj)
+		self._transformStack = []
 
 	def __getattr__(self, item):
 
 		if item in self.__dict__.keys():
 			return object.__getattribute__(self, item)
 
-		#self._applyMask(self._copyBaseObj(), setProxy=True)
-		result = super(Delta, self).__getattr__(item)
-		if isinstance(result, (
-				MethodType, FunctionType,
-				BuiltinFunctionType, BuiltinMethodType,
-				LambdaType
-		)):
-			#print("wrapping ", item)
-			# print("fn bound base {}".format(result.__self__ is
-			#                                 self._baseObj))
-			# print("fn bound proxy {}".format(result.__self__ is
-			#                                 self._proxyObj))
-			applyLam = lambda : self._applyMask(
-				self._copyBaseObj(),
-				#self._baseObj,
-				setProxy=True)
-			extractLam = lambda : self._extractMask()
-			# wrap = CallWrapper(result, beforeFn=self._applyMask,
-			#                    afterFn=self._extractMask)
-			wrap = CallWrapper(result,
-			                   #beforeFn=applyLam,
-			                   afterFn=extractLam
-			                   )
-			result = wrap
+		self._product(updateSelf=True)
+		result = super(TransformProxy, self).__getattr__(item)
 		return result
 
 	@property
@@ -184,11 +156,9 @@ class Delta(Proxy):
 	def _proxyObj(self, val):
 		self._proxyObjRef = val
 
-
 	def _copyBaseObj(self):
 		""" returns new copy of base object - override for
 		more complex objects"""
-		#obj = obj or self._baseObj
 		obj = self._baseObj
 		return copy.copy(obj)
 
@@ -201,25 +171,20 @@ class Delta(Proxy):
 	def _baseObj(self, obj):
 		self._baseObjRef = obj
 
-	# def _returnProxy(self):
-	# 	""" runs mask operation every time proxy is accessed
-	# 	never said this would be fast """
-	# 	return self._product()
-
-
-	def _extractMask(self, baseObj=None, deltaObj=None):
-		""" compares proxy object to base, collates delta to mask """
-	def _applyMask(self, newObj=None, setProxy=False):
-		""" applies delta mask to _product object
+	def _applyStack(self, newObj=None):
+		""" applies delta mask to newObj
 		_product object is passed in as basic copy
 		of base object """
+		return newObj
 
-	def _product(self):
-		# self._extractMask(self._baseObj, self._proxyObjRef)
-		#debug(self._mask)
-		newObj = copy.copy(self._baseObj)
-		self._applyMask(newObj)
-		self._proxyObjRef = newObj
+
+	def _product(self, updateSelf=True):
+		""" returns product of base object
+		with transformation stack """
+		newObj = self._copyBaseObj()
+		newObj = self._applyStack(newObj)
+		if updateSelf:
+			self._proxyObjRef = newObj
 		return newObj
 
 	def serialise(self):
@@ -230,21 +195,174 @@ class Delta(Proxy):
 		""" loads delta object from dict and reapplies to baseObj """
 		pass
 
+class DeltaProxy(TransformProxy):
+	""" delta-tracking wrapper
+
+	the FINAL result of main transform stack
+	is taken as the base object - between it and the proxy
+	object, delta ops are added to the delta stack,
+	which runs on top of the transform stack
+	use difflib for this afterall
+
+	"""
+	_proxyAttrs = ("_deltaStack",
+	               )
+
+	def __init__(self, obj, deep=False):
+		super(DeltaProxy, self).__init__(obj)
+		self._deltaStack = []
+
+	def __getattr__(self, item):
+
+		if item in self.__dict__.keys():
+			return object.__getattribute__(self, item)
+
+		result = super(DeltaProxy, self).__getattr__(item)
+		if isinstance(result, (
+				MethodType, FunctionType,
+				BuiltinFunctionType, BuiltinMethodType,
+				LambdaType
+		)):
+			extractLam = lambda : self._extractDeltas(
+				self._transformProduct(), self._proxyObj)
+			wrap = CallWrapper(result,
+			                   #beforeFn=applyLam,
+			                   afterFn=extractLam
+			                   )
+			result = wrap
+		return result
+
+
+	def _extractDeltas(self, baseObj=None, deltaObj=None):
+		""" compares proxy object to base, collates delta to mask
+		BEWARE this will only compare against the
+		BASE TRANSFORM PRODUCT.
+		"""
+		raise NotImplementedError
+
+	def _applyDeltas(self, newObj=None, setProxy=False):
+		""" applies delta mask to _product object
+		_product object is passed in as basic copy
+		of base object """
+		raise NotImplementedError
+
+	def _transformProduct(self):
+		return super(DeltaProxy, self)._product(updateSelf=False)
+
+	def _product(self, updateSelf=True):
+		""" g"""
+		transformProduct = self._transformProduct()
+		self._applyDeltas(transformProduct)
+		if updateSelf:
+			self._proxyObjRef = transformProduct
+		return transformProduct
+
+
 
 def deltaTypeForObj(obj):
 	""" very primitive for now """
 	if isinstance(obj, dict):
 		return DictDelta
 	elif hasattr(obj, "__len__"):
-		return ListDelta
+		return ListDeltaProxy
 	else:
 		return None
 
-class ListDelta(Delta):
+
+# class ListDelta(Transform):
+class ListDelta(object):
+	""" atomic transform for lists
+	 indices still dicy """
+	replaceData = namedtuple("replaceData", ["start", "end", "data"])
+	insertData = namedtuple("insertData", ["index", "data"])
+	deleteData = namedtuple("deleteData", ["start", "end", "data"])
+
+	@staticmethod
+	def complexToId(sequence, idMap=None):
+		""" given a sequence, convert all unhashable objects
+		to their ids, and store these in a map """
+		idMap = idMap or {}
+		copySeq = list(sequence) # may not be necessary in the end
+		for i, val in enumerate(sequence):
+			try:
+				hash(val)
+			except:
+				# check if already exists in map
+				if val in idMap.values():
+					tag = [k for k, v in iteritems(idMap)
+					       if v is val][0]
+				else:
+					tag = uuid.uuid1()
+				copySeq[i] = tag
+				idMap[tag] = val
+		return (copySeq, idMap)
+
+	@staticmethod
+	def idToComplex(idMap, sequence):
+		copySeq = list(sequence)
+		for i, tag in enumerate(sequence):
+			if tag in idMap:
+				copySeq[i] = idMap[ sequence[i] ]
+		return sequence
+
+	@classmethod
+	def extractDeltas(cls, seqA, seqB):
+
+		# flatten complex objects
+		flatA, idMap = cls.complexToId(seqA)
+		flatB, idMap = cls.complexToId(seqB, idMap)
+
+		data = []
+		result = difflib.SequenceMatcher(
+			isjunk=None,
+			a=flatA,
+			b=flatB,
+			autojunk=False).get_opcodes()
+
+		# having used flattened sequences for extraction,
+		# can we then use rich objects in actual deltas?
+		for op, aStartIndex, aEndIndex, \
+			bStartIndex, bEndIndex in result:
+			if op == "replace" : # can do dicts for portability
+				data.append(cls.replaceData(
+					start=aStartIndex,
+					end=aEndIndex,
+				    data=seqB[ bStartIndex : bEndIndex ]))
+			elif op == "insert" :
+				data.append(cls.insertData(
+					index=aStartIndex,
+					data=seqB[bStartIndex: bEndIndex]))
+			elif op == "delete" :
+				data.append(cls.deleteData(
+					start=aStartIndex, end=aEndIndex,
+					data=seqA[aStartIndex:aEndIndex]))
+		return data
+
+	@classmethod
+	def applyDelta(cls, data, baseSeq=None):
+		"""	given a single diff data tuple, apply it to the sequence
+		and return it
+		:param data: diff data namedtuple
+		:param baseSeq: list
+		:return:
+		"""
+		if type(data) == cls.replaceData:
+			baseSeq = baseSeq[:data.start] + data.data + \
+			          baseSeq[data.end:]
+		elif type(data) == cls.insertData:
+			baseSeq = baseSeq[:data.index] + data.data + baseSeq[data.index:]
+		elif type(data) == cls.deleteData:
+			baseSeq = baseSeq[:data.start] + baseSeq[data.end:]
+		return baseSeq
+		# return self.baseType(baseSeq)
+
+
+
+class ListDeltaProxy(DeltaProxy):
 	""" basic, indices not working """
 
 	def __init__(self, obj, deep=False):
-		super(ListDelta, self).__init__(obj, deep)
+		super(ListDeltaProxy, self).__init__(obj, deep)
 		if deep:
 			# iterate over list entries to check for complex data
 			for i, entry in enumerate(self):
@@ -254,32 +372,16 @@ class ListDelta(Delta):
 					self[i] = deltaTypeForObj(entry)(entry, deep=True)
 					self._proxyChildren.add(self[i])
 
-	def _extractMask(self, baseObj=None, deltaObj=None):
-		#print("extractMask", self._mask)
-		#print(self._baseObj, self._proxyObjRef)
-		#print(self._mask)
-		self._mask["added"] = {
-			self._proxyObjRef.index(i) : i for i in self._proxyObjRef \
-				if not i in self._baseObj }
+	def _extractDeltas(self, baseObj=None, deltaObj=None):
+		print("list extract")
+		print(baseObj, deltaObj)
+		self._deltaStack = ListDelta.extractDeltas(baseObj, deltaObj)
+		print("stack", self._deltaStack)
+		pass
 
-		#print("mask", self._mask)
-
-	def _applyMask(self, newObj=None, setProxy=False):
-		#print("applyMask", newObj)
-		#print("mask {}".format(self._mask))
-		# print("newObj {} base".format(newObj is self._baseObj))
-		# print("newObj {} proxy".format(newObj is self._proxyObj))
-		# return
-
-		for index, val in iteritems(self._mask["added"]):
-			try:
-				newObj.insert(index, val)
-			except:
-				newObj.append(val)
-		# # maybe
-		if setProxy:
-			#self._proxyObj = newObj
-			self._proxyObjRef = newObj
+	def _applyDeltas(self, newObj=None, setProxy=False):
+		for opData in self._deltaStack:
+			ListDelta.applyDelta(opData, newObj)
 		return newObj
 
 """
@@ -287,7 +389,7 @@ before looking up ANYTHING or any method on delta, extract new
 object from applying the mask and update the proxy obj
 """
 
-class DictDelta(Delta):
+class DictDelta(DeltaProxy):
 
 	def __init__(self, obj, deep=False):
 		super(DictDelta, self).__init__(obj, deep)
@@ -314,7 +416,7 @@ class DictDelta(Delta):
 
 
 
-class TreeDelta(Delta):
+class TreeDelta(DeltaProxy):
 	""" final boss """
 
 	def __init__(self, obj):
@@ -377,9 +479,31 @@ class TreeDelta(Delta):
 
 		proxy.value = data["value"]
 
-
-
-
+#
+# from pprint import pprint
+# base = ["a", "b", ["abffd", 59, 4], "h", {49 : "v"}, 5]
+# d = ["a", ["abffd", 59, 5], "h", {"help" : "me"}, {49 : "v"}, "s", 5, "jjf"]
+#
+# for l in [base, d]:
+# 	for i, val in enumerate(l):
+# 		try:
+# 			hash(val)
+# 		except:
+# 			l[i] = tuple(val)
+#
+#
+# # base = ["a", "b"]
+# # d = ["a", "b", "c"]
+#
+# matcher = difflib.SequenceMatcher(
+# 	isjunk=None, a=base, b=d, autojunk=False
+# )
+#
+# ops = matcher.get_opcodes()
+# pprint(ops)
+#
+# groups = matcher.get_grouped_opcodes()
+#
 
 
 """
@@ -410,49 +534,4 @@ testTree("parent.childA").extras["options"] = (930, "eyyy")
 
 if __name__ == '__main__':
 	pass
-
-	# baseDict = {"a" : "b", 45 : 64}
-	# proxyDict = DictDelta(baseDict)
-	#
-	#
-	#
-
-	# proxyTree = TreeDelta(testTree)
-	#
-	# proxyTree["proxyKey"] = "w e w _ l a d"
-	# proxyTree["parent"] = 12323422
-	# proxyTree.value = 4956565
-	#
-	# print(proxyTree.display())
-	#
-	# proxyTree["proxyKey.proxyChild"] = "jojojo"
-	#
-	# print(proxyTree.display())
-	# print(testTree.display())
-
-
-
-	# baseDict = {"baseKey" : 69,
-	#             "baseKeyB" : "eyy"}
-	# debug(baseDict)
-	#
-	# replaceDict = {"replacedDict" : 3e4}
-
-	# testDict = Proxy(baseDict)
-	# testDict["proxyTest"] = True
-	# debug(testDict)
-	# testDict._proxyObj = replaceDict
-	# debug(testDict)
-	#
-	# proxyDict = Delta(baseDict)
-	# debug(proxyDict)
-	#
-	# baseDict["newBaseKey"] = 49494
-	# debug(proxyDict)
-	#
-	# proxyDict["newProxyKey"] = "FAJLS"
-	# print("baseDict is {}".format(baseDict))
-	# debug(proxyDict)
-
-
 

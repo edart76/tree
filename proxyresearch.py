@@ -138,3 +138,12 @@ assert isinstance(n, B)
 assert isinstance(b, DProxyTest) # this fails
 #print(n.specificBMethod())
 print(n.specificDMethod())
+
+print("")
+
+
+a = "d"
+b = "d"
+
+print(a is b)
+

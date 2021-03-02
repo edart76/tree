@@ -141,7 +141,8 @@ class TransformProxy(Proxy):
 		if item in self.__dict__.keys():
 			return object.__getattribute__(self, item)
 
-		self._product(updateSelf=True)
+		#self._product(updateSelf=True)
+		self._proxyObjRef = self._product()
 		result = super(TransformProxy, self).__getattr__(item)
 		return result
 
@@ -178,13 +179,11 @@ class TransformProxy(Proxy):
 		return newObj
 
 
-	def _product(self, updateSelf=True):
+	def _product(self):
 		""" returns product of base object
 		with transformation stack """
 		newObj = self._copyBaseObj()
 		newObj = self._applyStack(newObj)
-		if updateSelf:
-			self._proxyObjRef = newObj
 		return newObj
 
 	def serialise(self):
@@ -223,11 +222,19 @@ class DeltaProxy(TransformProxy):
 				BuiltinFunctionType, BuiltinMethodType,
 				LambdaType
 		)):
-			extractLam = lambda : self._extractDeltas(
-				self._transformProduct(), self._proxyObj)
+			# extractLam = lambda: self._extractDeltas(
+			# 	self._transformProduct(), self._proxyObjRef)
+			def _postCallExtract():
+				self._extractDeltas(
+					self._transformProduct(), self._proxyObjRef)
+				print("post proxy", self._proxyObjRef)
+
+
+
 			wrap = CallWrapper(result,
 			                   #beforeFn=applyLam,
-			                   afterFn=extractLam
+			                   # afterFn=extractLam
+			                   afterFn=_postCallExtract
 			                   )
 			result = wrap
 		return result
@@ -247,14 +254,12 @@ class DeltaProxy(TransformProxy):
 		raise NotImplementedError
 
 	def _transformProduct(self):
-		return super(DeltaProxy, self)._product(updateSelf=False)
+		return super(DeltaProxy, self)._product()
 
-	def _product(self, updateSelf=True):
+	def _product(self):
 		""" g"""
 		transformProduct = self._transformProduct()
-		self._applyDeltas(transformProduct)
-		if updateSelf:
-			self._proxyObjRef = transformProduct
+		transformProduct = self._applyDeltas(transformProduct)
 		return transformProduct
 
 
@@ -298,6 +303,26 @@ class ListDelta(object):
 		return (copySeq, idMap)
 
 	@staticmethod
+	def allToId(sequence):
+		""" because of shared hashes, and especially
+		(a IS b) for equal strings, need to first assign
+		EVERY element a uuid, regardless of repeat """
+		idMap = {}
+		copySeq = list(sequence)
+		for i, val in enumerate(sequence):
+			tag = uuid.uuid1()
+			idMap[tag] = val
+			copySeq[i] = tag
+		return copySeq, idMap
+
+	@staticmethod
+	def idToAll(idMap, sequence):
+		copySeq = list(sequence)
+		for i, tag in enumerate(sequence):
+			copySeq[i] = idMap[tag]
+		return copySeq
+
+	@staticmethod
 	def idToComplex(idMap, sequence):
 		copySeq = list(sequence)
 		for i, tag in enumerate(sequence):
@@ -307,6 +332,9 @@ class ListDelta(object):
 
 	@classmethod
 	def extractDeltas(cls, seqA, seqB):
+		""" ignore complex objects for now """
+		hashA, mapA = cls.allToId(seqA)
+		hashB, mapB = cls.allToId(seqB)
 
 		# flatten complex objects
 		flatA, idMap = cls.complexToId(seqA)
@@ -336,6 +364,7 @@ class ListDelta(object):
 				data.append(cls.deleteData(
 					start=aStartIndex, end=aEndIndex,
 					data=seqA[aStartIndex:aEndIndex]))
+		#print(data)
 		return data
 
 	@classmethod
@@ -346,16 +375,20 @@ class ListDelta(object):
 		:param baseSeq: list
 		:return:
 		"""
+		# print("")
+		# print("apply")
+		# print(type(data))
+
 		if type(data) == cls.replaceData:
 			baseSeq = baseSeq[:data.start] + data.data + \
 			          baseSeq[data.end:]
 		elif type(data) == cls.insertData:
+			print("inserting")
 			baseSeq = baseSeq[:data.index] + data.data + baseSeq[data.index:]
 		elif type(data) == cls.deleteData:
 			baseSeq = baseSeq[:data.start] + baseSeq[data.end:]
+		# print("newSeq ", baseSeq)
 		return baseSeq
-		# return self.baseType(baseSeq)
-
 
 
 class ListDeltaProxy(DeltaProxy):
@@ -380,8 +413,13 @@ class ListDeltaProxy(DeltaProxy):
 		pass
 
 	def _applyDeltas(self, newObj=None, setProxy=False):
-		for opData in self._deltaStack:
-			ListDelta.applyDelta(opData, newObj)
+
+		print(self._deltaStack)
+		self._deltaStack.reverse()
+		print((self._deltaStack))
+		for opData in (self._deltaStack):
+			newObj = ListDelta.applyDelta(opData, newObj)
+		print("newObj ", newObj)
 		return newObj
 
 """

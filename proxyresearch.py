@@ -146,4 +146,7 @@ a = "d"
 b = "d"
 
 print(a is b)
+print(hash(a))
+print(hash(b))
+print(hash(str(b)))
 

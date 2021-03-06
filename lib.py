@@ -149,25 +149,37 @@ serialisedBase = "'?VALUE': 'tree root', '?CHILDREN'"
 intermediate = "'?VALUE': tr_____ot', '?CHILDREN'"
 serialisedNew = "'?VAL': 'tree', '?CHILDREN'"
 
-if __name__ == '__main__':
-
-	print("base", serialisedBase)
-
-	obj = DiffUndo(serialisedBase)
-
-	obj.do(intermediate)
-
-	obj.do(serialisedNew)
-	print("undo", obj.undo())
-	print("undo", obj.undo())
-	print("redo", obj.redo())
-	print("redo", obj.redo())
-	# print("undo", obj.undo())
-	# print("redo", obj.redo())
-
-
+# if __name__ == '__main__':
+#
+# 	print("base", serialisedBase)
+#
+# 	obj = DiffUndo(serialisedBase)
+#
+# 	obj.do(intermediate)
+#
+# 	obj.do(serialisedNew)
+# 	print("undo", obj.undo())
+# 	print("undo", obj.undo())
+# 	print("redo", obj.redo())
+# 	print("redo", obj.redo())
+# 	# print("undo", obj.undo())
+# 	# print("redo", obj.redo())
 
 
+
+def dictFromPool(fields, pool):
+	""" pool is assumed to be a list of lists,
+	of various lengths, but the same order, where fields
+	are present
+	fields is the fields to check against """
+	result = {}
+	found = [i for i in pool if i[:len(fields)] == fields]
+	for i in found:
+		if fields == i: continue
+		newField = i[ len(fields) ]
+		nextFields = list(fields) + [newField]
+		result[newField] = dictFromPool(nextFields, found)
+	return result
 
 
 

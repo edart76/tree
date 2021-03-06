@@ -11,12 +11,14 @@ import difflib
 import uuid
 import proxy
 
+from core import TreeBase
+
 class ListDelta(object):
 	""" atomic transform for lists
 	 indices still dicy """
-	replaceData = namedtuple("replaceData", ["start", "end", "data"])
-	insertData = namedtuple("insertData", ["index", "data"])
-	deleteData = namedtuple("deleteData", ["start", "end", "data"])
+	replaceOp = namedtuple("replaceData", ["start", "end", "data"])
+	insertOp = namedtuple("insertData", ["index", "data"])
+	deleteOp = namedtuple("deleteData", ["start", "end", "data"])
 
 	@staticmethod
 	def complexToId(sequence, idMap=None):
@@ -88,38 +90,38 @@ class ListDelta(object):
 		for op, aStartIndex, aEndIndex, \
 			bStartIndex, bEndIndex in result:
 			if op == "replace" : # can do dicts for portability
-				data.append(cls.replaceData(
+				data.append(cls.replaceOp(
 					start=aStartIndex,
 					end=aEndIndex,
 				    data=seqB[ bStartIndex : bEndIndex ]))
 			elif op == "insert" :
-				data.append(cls.insertData(
+				data.append(cls.insertOp(
 					index=aStartIndex,
 					data=seqB[bStartIndex: bEndIndex]))
 			elif op == "delete" :
-				data.append(cls.deleteData(
+				data.append(cls.deleteOp(
 					start=aStartIndex, end=aEndIndex,
 					data=seqA[aStartIndex:aEndIndex]))
 		#print(data)
 		return data
 
 	@classmethod
-	def applyDelta(cls, data, baseSeq=None):
+	def applyDelta(cls, op, baseSeq=None):
 		"""	given a single diff data tuple, apply it to the sequence
 		and return it
-		:param data: diff data namedtuple
+		:param op: diff data namedtuple
 		:param baseSeq: list
 		:return:
 		"""
 
-		if type(data) == cls.replaceData:
-			baseSeq = baseSeq[:data.start] + data.data + \
-			          baseSeq[data.end:]
-		elif type(data) == cls.insertData:
+		if type(op) == cls.replaceOp:
+			baseSeq = baseSeq[:op.start] + op.data + \
+			          baseSeq[op.end:]
+		elif type(op) == cls.insertOp:
 			print("inserting")
-			baseSeq = baseSeq[:data.index] + data.data + baseSeq[data.index:]
-		elif type(data) == cls.deleteData:
-			baseSeq = baseSeq[:data.start] + baseSeq[data.end:]
+			baseSeq = baseSeq[:op.index] + op.data + baseSeq[op.index:]
+		elif type(op) == cls.deleteOp:
+			baseSeq = baseSeq[:op.start] + baseSeq[op.end:]
 		# print("newSeq ", baseSeq)
 		return baseSeq
 
@@ -165,5 +167,52 @@ class DictDelta(object):
 			baseMap.pop(op.key)
 		elif isinstance(op, (cls.replaceOp, cls.insertOp)):
 			baseMap[op.key] = op.data
+
+
+class TreeDelta(object):
+
+	valueOp = namedtuple("valueOp", ["value"])
+	insertOp = namedtuple("insertBranch", ["branch", "index"])
+	removeOp = namedtuple("removeBranch", ["branch"])
+
+	@classmethod
+	def extractDeltas(cls, treeA, treeB):
+
+		ops = []
+		for bA in treeA.branches:
+			if not bA in treeB.branches:
+				ops.append(cls.removeOp(bA))
+		for bB in treeB.branches:
+			if not bB in treeA.branches:
+				ops.append(cls.insertOp(bB, bB.index()))
+
+		# value check is flat override,
+		# very primitive for now
+		if treeA.value != treeB.value:
+			ops.append(cls.valueOp(treeB.value))
+
+
+typeChangeOp = namedtuple("typeChangeOp", ["toType", "toValue"])
+
+typeMap = {
+	tuple : ListDelta,
+	list : ListDelta,
+	dict : DictDelta,
+}
+
+def deltaTypeForObject(obj):
+	for k in typeMap.keys():
+		if isinstance(obj, k):
+			return typeMap[k]
+
+def compareObjects(a, b):
+	""" base function for comparing things I guess? """
+	if not (isinstance(a, type(b) or isinstance(b, type(a)))):
+		return [typeChangeOp(type(b), b)]
+	if not type(a) in typeMap.keys():
+		raise RuntimeError("No delta type for {}".format(type(a)))
+	deltaType = typeMap[ type(a) ]
+
+	return deltaType.extractDeltas(a, b)
 
 

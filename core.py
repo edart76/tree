@@ -233,9 +233,9 @@ class TreeBase(object):
 				obj = self.__class__(first, None)
 			else:
 				obj = self._defaultCls()(first, None)
-			# set extras from given keys - need better mechanism to this
+			# set extras from given keys -
 			for key in self.extraKeys:
-				if key in kwargs:
+				if key in kwargs.get("extras", []):
 					obj.extras[key] = kwargs[key]
 
 			branch = self.addChild(obj)
@@ -273,13 +273,26 @@ class TreeBase(object):
 		return self.fromDict(self.serialise())
 
 	def __iter__(self):
-		""""""
-		return self._branchMap.__iter__()
+		"""iterate over branches"""
+		return self._branchMap.values().__iter__()
 
 	def __contains__(self, item):
+		""" I found strict 'is' check more often useful
+		use containsEq for equivalence """
 		if isinstance(item, TreeBase):
-			return item in self._branchMap.values()
-		return self._branchMap.__contains__(item)
+			return any([ b is item for b in self._branchMap.values()])
+
+	def __eq__(self, other):
+		""" equivalence considers only hash, analoguous to 'is'
+		checking equivalent contents was a bit too broad """
+		if isinstance(other, TreeBase):
+			return self.isEquivalent(other)
+		return NotImplementedError
+
+	def __hash__(self):
+		""" hash is unique per object """
+		return hash(self.uuid)
+
 
 	def activateSignals(self):
 		self._signalsActive = True
@@ -308,15 +321,16 @@ class TreeBase(object):
 			self.nameChanged.connect(parent.nameChanged)
 
 	def addChild(self, branch, index=None, force=False):
-		if branch in self.branches:
+		if branch in self: # same object
 			print("cannot add existing branch, named " + branch.name)
 			return branch
 		while branch.name in self.keys():
 			if force: # override old branch with new
 				break
 			else:
-				print("cannot add duplicate child of name {}".format(branch.name))
-				branch._setName(incrementName(branch.name))
+				# print("cannot add duplicate child of name {}".format(branch.name))
+				branch._setName(incrementName(
+					branch.name, self.keys()))
 
 		if index is None:
 			self._branchMap[branch.name] = branch
@@ -439,6 +453,26 @@ class TreeBase(object):
 		recursive iterators only possible in python 3 though"""
 		pass
 
+	def isEquivalent(self, branch, includeBranches=True):
+		""" tests if this tree is equivalent to
+		the given object """
+		flags = [
+			self.name == branch.name,
+			self.value == branch.value,
+			self.extras == branch.extras
+		]
+		if includeBranches:
+			flags.append(all([i.isEquivalent(n)
+				for i, n in zip(self.branches, branch.branches)]))
+		return all(flags)
+
+	def contains(self, branch, equivalent=True):
+		""" more explicit contains check, allowing for equivalence,
+		inheritance, etc
+		"""
+		return any([branch.isEquivalent(i) for i in self.branches])
+
+
 	def _address(self, prev=None):
 		"""returns string path from root to this tree
 		does not include root
@@ -547,19 +581,6 @@ class TreeBase(object):
 				branch.value = str(branch.value).replace(searchFor, replaceWith)
 
 
-	def __eq__(self, other):
-		""" equivalence considers only hash, analoguous to 'is'
-		checking equivalent contents was a bit too broad """
-		if isinstance(other, TreeBase):
-			return self.__hash__() == other.__hash__()
-			# return all( [getattr(self, i) == getattr(other, i)
-			#              for i in ("_branchMap", "_value", "extras")])
-		return NotImplementedError
-
-	def __hash__(self):
-		""" hash is unique per object """
-		return hash(self.uuid)
-
 	def matches(self, other):
 		""" check if name, value and extras match
 		another given branch """
@@ -610,6 +631,7 @@ class TreeBase(object):
 			"?NAME" : self.name,
 		}
 		if self.value is not None:
+			# can be dicey with complex types
 			serial["?VALUE"] = self.value
 		if self.branches:
 			serial["?CHILDREN"] = [i.serialise() for i in self._branchMap.values()]

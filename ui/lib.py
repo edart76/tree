@@ -250,6 +250,8 @@ class SelectionModelContainer(object):
 		self._model = model
 
 	def add(self, index):
+		if not isinstance(index, QtCore.QModelIndex):
+			index = index.index()
 		self._model.select(index, QtCore.QItemSelectionModel.Select |
 		                   QtCore.QItemSelectionModel.Rows)
 	def remove(self, index):
@@ -262,3 +264,5 @@ class SelectionModelContainer(object):
 		self._model.setCurrentIndex(index,
 		                            QtCore.QItemSelectionModel.Select |
 		                   QtCore.QItemSelectionModel.Rows)
+	def clear(self):
+		self._model.clear()

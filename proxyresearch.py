@@ -3,7 +3,7 @@
 """ goal is a transparent wrapper that properly
 spoofs instance and subclass checking, while avoiding
 inits and new on the target class """
-
+from pprint import pprint
 import copy
 from collections import OrderedDict
 import inspect
@@ -141,12 +141,27 @@ print(n.specificDMethod())
 
 print("")
 
-
 a = "d"
 b = "d"
-
 print(a is b)
-print(hash(a))
-print(hash(b))
-print(hash(str(b)))
+
+c = "hello"
+d = "hello"
+print(c is d)
+print("--------")
+
+from test_tree import tempTree
+
+
+t = tempTree
+b = tempTree("branch")
+print("--")
+b in t
+print("--")
+b is t
+
+
+pprint(tempTree.serialise())
+
+
 

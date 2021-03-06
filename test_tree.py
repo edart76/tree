@@ -76,6 +76,21 @@ class TestMainTree(unittest.TestCase):
 		self.assertIs(self.tree("branchA")("leafA")("newBranch"),
 		              newBranch)
 
+	def test_treeEquality(self):
+		""" testing distinction between identity and equality """
+		newBranch = self.tree("branchA", "new")
+		newCopy = newBranch.__copy__()
+		self.assertEqual(newBranch, newCopy,
+		                 msg="branch and its shallow copy are not equal")
+		self.assertFalse(newBranch is newCopy,
+		                 msg="branch IS its copy")
+		self.assertTrue(newBranch in self.tree("branchA"),
+		                msg="tree does not contain its branch")
+		self.assertFalse(newCopy in self.tree("branchA"),
+		                 msg="tree contains copy of its branch")
+
+
+
 	def test_treeSerialisation(self):
 		""" test serialising tree to dict
 		should get more advanced testing here, serialisation
@@ -94,6 +109,7 @@ class TestMainTree(unittest.TestCase):
 
 
 if __name__ == '__main__':
+
 	unittest.main()
 
 

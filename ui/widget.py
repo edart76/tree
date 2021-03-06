@@ -6,10 +6,11 @@ from collections import OrderedDict
 from PySide2 import QtCore, QtWidgets, QtGui
 from main import Tree
 from signal import Signal
-from delta import TreeDelta
+#from delta import TreeDelta
 from tree.lib import DiffUndo
 
 from tree.ui.lib import KeyState, PartialAction, ContextMenu, SelectionModelContainer
+# from tree.ui.style import style
 
 from sys import version_info
 import sys, traceback, functools
@@ -93,6 +94,7 @@ if doIcons:
 
 	for k, v in subs.items():
 		styleSheet = styleSheet.replace(k, v)
+
 
 class WheelEventFilter(QtCore.QObject):
 	def eventFilter(self, obj, event):
@@ -196,6 +198,7 @@ class TreeWidget(QtWidgets.QTreeView):
 		self.clicked.connect(self.onClicked)
 		self.activated.connect(self.onClicked)
 		self.pressed.connect(self.onClicked)
+
 
 	@property
 	def sel(self):
@@ -382,9 +385,6 @@ class TreeWidget(QtWidgets.QTreeView):
 		pos = self.mapToGlobal(event.pos())
 		menu = self.menu.exec_(pos)
 
-	# menu = self.menu.exec_( self.viewport().mapToGlobal(event.pos()) )
-	# menu = self.menu.exec_( self.viewport().mapToGlobal(event.globalPos()) )
-
 	def showMenu(self, *args, **kwargs):
 		return self.menu.exec_(*args, **kwargs)
 
@@ -404,6 +404,25 @@ class TreeWidget(QtWidgets.QTreeView):
 	#
 	# 	super(TreeWidget, self).dragMoveEvent(event)
 	# 	# event.accept()
+
+	def select(self, branch=None, path=None, clear=True):
+		""" main user selection method """
+		if clear:
+			self.sel.clear()
+		if not (branch or path): # select -cl 1
+			return
+		if path:
+			result = self.tree.getBranch(path )
+			if result is None:
+				return None
+			branch = [result]
+		else:
+			if not isinstance(branch, (list, tuple)):
+				branch = branch
+
+		for b in branch:
+			item = self.model().rowFromTree(b)
+			self.sel.add(item.index())
 
 	def saveAppearance(self):
 		""" saves expansion and selection state """
@@ -583,13 +602,6 @@ class AbstractBranchDelegate(QtWidgets.QStyledItemDelegate):
 			return None
 		return super(AbstractBranchDelegate, self).createEditor(parent, options, index)
 
-# def paint(self, painter, option, index):
-# 	""" draw test icon """
-# 	painter.drawPixmap(
-# 		QtCore.QPointF(0.0, 0.0),
-# 		squareCentre,
-# 		QtCore.QRectF(0.0, 0.0, 20.0, 20.0)
-# 	)
 
 
 class AbstractBranchItem(QtGui.QStandardItem):
@@ -935,42 +947,48 @@ def test():
 	import sys
 	app = QtWidgets.QApplication(sys.argv)
 	win = QtWidgets.QMainWindow()
+	win.setStyleSheet(style)
 
-	winLayout = QtWidgets.QGridLayout(win)
-
-	widg = TreeWidget(win, tree=tempTree)
-	winLayout.addWidget(widg)
-	# winLayout.setSpacing(0)
-	# winLayout.setContentsMargins(0, 0, 0, 0)
-
-
-	win.setLayout(winLayout)
-
-	sys.exit(app.exec_())
-
-
-
-if __name__ == "__main__":
-	# test the tree widget
-	from PySide2 import QtCore
-	from tree.test_tree import tempTree
-	import sys
-	app = QtWidgets.QApplication(sys.argv)
-	win = QtWidgets.QMainWindow()
-
-	#winLayout = QtWidgets.QGridLayout(win)
+	#winLayout = QtWidgets.QVBoxLayout()
 
 	widg = TreeWidget(win, tree=tempTree)
+	widg.setStyleSheet(style)
 	#winLayout.addWidget(widg)
 	# winLayout.setSpacing(0)
 	# winLayout.setContentsMargins(0, 0, 0, 0)
 
-
 	#win.setLayout(winLayout)
 	win.setCentralWidget(widg)
-	s = win.show()
-	#app.exec_()
+	win.show()
 	sys.exit(app.exec_())
 
-	print(s)
+
+
+
+
+if __name__ == "__main__":
+	w = test()
+	w.show()
+	# test the tree widget
+	# from PySide2 import QtCore
+	# from tree.test_tree import tempTree
+	# import sys
+	# app = QtWidgets.QApplication(sys.argv)
+	# win = QtWidgets.QMainWindow()
+	#
+	# #winLayout = QtWidgets.QGridLayout(win)
+	#
+	# widg = TreeWidget(win, tree=tempTree)
+	# #winLayout.addWidget(widg)
+	# # winLayout.setSpacing(0)
+	# # winLayout.setContentsMargins(0, 0, 0, 0)
+	#
+	#
+	# #win.setLayout(winLayout)
+	# win.setCentralWidget(widg)
+	# s = win.show()
+	# #app.exec_()
+	# sys.exit(app.exec_())
+	#
+	# print(s)
 

@@ -314,8 +314,8 @@ class TreeBase(object):
 			this is the most flexible, but every signal is a new frame,
 			so stack traces may get c r a z y
 			"""
-			# self.valueChanged = tree.valueChanged
-			# self.structureChanged = tree.structureChanged
+			for i in self.signals:
+				i.clear()
 			self.valueChanged.connect(parent.valueChanged)
 			self.structureChanged.connect(parent.structureChanged)
 			self.nameChanged.connect(parent.nameChanged)
@@ -336,7 +336,7 @@ class TreeBase(object):
 			self._branchMap[branch.name] = branch
 		else: # more complex ordered dict management
 			newMap = OrderedDict()
-			oldBranches = self._branchMap.values()
+			oldBranches = list(self._branchMap.values())
 			if index > len(oldBranches) - 1:
 				index = len(oldBranches)
 			oldBranches.insert(index, branch)
@@ -562,7 +562,7 @@ class TreeBase(object):
 		if index < 0: # ?
 			index = len(self.siblings) + index
 		newMap = OrderedDict()
-		oldKeys = self.parent._branchMap.keys()
+		oldKeys = list(self.parent._branchMap.keys())
 		oldKeys.remove(self.name)
 		oldKeys.insert(index, self.name)
 		for key in oldKeys:

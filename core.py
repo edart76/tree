@@ -410,7 +410,7 @@ class TreeBase(object):
 		""" return the index of this branch if entire tree were flattened """
 		index = self.index()
 		if self.parent:
-			index += self.parent.flattenedIndex()
+			index += self.parent.flattenedIndex() + 1
 		return index
 
 	def items(self):

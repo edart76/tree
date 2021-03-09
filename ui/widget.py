@@ -9,7 +9,7 @@ from signal import Signal
 #from delta import TreeDelta
 from tree.lib import DiffUndo
 
-from tree.ui.lib import KeyState, PartialAction, ContextMenu, SelectionModelContainer
+from tree.ui.lib import KeyState, PartialAction, ContextMenu, SelectionModelContainer, keyDict
 # from tree.ui.style import style
 
 from sys import version_info
@@ -227,8 +227,9 @@ class TreeWidget(QtWidgets.QTreeView):
 
 		# only pass event on editing,
 		# need to manage selection separately
-		if not (self.keyState.ctrl or self.keyState.shift):
-			print("settings pass mouse event")
+		if not (self.keyState.ctrl or self.keyState.shift)\
+				or event.button() == QtCore.Qt.RightButton:
+			#print("settings pass mouse event")
 			return super(TreeWidget, self).mousePressEvent(event)
 
 		index = self.indexAt(event.pos())
@@ -238,25 +239,49 @@ class TreeWidget(QtWidgets.QTreeView):
 		""" manage selection manually """
 		# print("settings clicked {}".format(index))
 		# if ctrl, toggle selection
-		if self.keyState.ctrl:
-			# self.sel.add(index)
-			# self.sel.setCurrent(index)
+		if self.keyState.ctrl and not self.keyState.shift:
 			self.sel.toggle(index)
-		elif self.keyState.shift:
-			if not self.currentSelected:
-				self.currentSelected = self.modelObject.index(1, 0)
-			# select all entries between last and clicked
-			clickTree = self.modelObject.itemFromIndex(index).tree
-			lastTree = self.modelObject.itemFromIndex(index).tree
-			maxIndex = max(clickTree.flattenedIndex(),
-			               lastTree.flattenedIndex())
-			minIndex = min(clickTree.flattenedIndex(),
-			               lastTree.flattenedIndex())
-			allBranches = self.modelObject.tree.root.allBranches()
-			for i in range(minIndex, maxIndex):
-				self.sel.add(self.modelObject.rowFromTree(allBranches[i]))
+			self.sel.setCurrent(index)
+			return
+		elif self.keyState.shift: # contiguous span
+
+			clickRow = self.model().rowFromIndex(index)
+			currentRow = self.model().rowFromIndex(
+				self.sel.current())
+			# find physically lowest on screen
+			if self.visualRect(clickRow).y() < \
+				self.visualRect(currentRow).y():
+				# lowest = currentRow
+				# highest = clickRow
+				fn = self.indexAbove
+			else:
+				lowest = clickRow
+				highest = currentRow
+				fn = self.indexBelow
+			targets = []
+			selStatuses = []
+			checkIdx = currentRow
+			selRows = self.selectionModel().selectedRows()
+			count = 0
+			while checkIdx != clickRow and count < 4:
+				print(self.model().itemFromIndex(checkIdx))
+				count += 1
+				checkIdx = fn(checkIdx)
+				targets.append(checkIdx)
+				selStatuses.append(checkIdx in selRows)
+
+			addOrRemove = sum(selStatuses) < len(selStatuses) / 2
+			for row in targets:
+				self.sel.add(row)
+				# if self.keyState.ctrl:
+				# 	self.sel.add(row)
+				# else:
+				# 	if addOrRemove:
+				# 		self.sel.add(row)
+				# 	else: self.sel.remove(row)
 
 		# set previous selection
+		self.sel.setCurrent(index)
 		self.currentSelected = index
 
 
@@ -349,11 +374,11 @@ class TreeWidget(QtWidgets.QTreeView):
 		# build from tree for items
 		# commonParentIndex = index.parent()
 		commonParentIndex = index
-		commonParentItem = self.modelObject.itemFromIndex(commonParentIndex) \
-		                   or self.modelObject.invisibleRootItem()
+		commonParentItem = self.model().itemFromIndex(commonParentIndex) \
+		                   or self.model().invisibleRootItem()
 
 		commonParentItem.tree.addChild(pasteTree)
-		self.modelObject.buildFromTree(pasteTree, commonParentItem)
+		self.model().buildFromTree(pasteTree, commonParentItem)
 		pass
 
 	def addEntry(self):
@@ -468,7 +493,7 @@ class TreeWidget(QtWidgets.QTreeView):
 			self.expand( self.modelObject.rowFromTree(i) )
 			pass
 		if self.currentSelected:
-			self.selectionModel().setCurrentIIndex(
+			self.selectionModel().setCurrentIndex(
 				self.model().rowFromTree(self.currentSelected),
 				QtCore.QItemSelectionModel.Current
 			)
@@ -498,6 +523,9 @@ class TreeWidget(QtWidgets.QTreeView):
 
 		"""
 		self.keyState.keyPressed(event)
+		#print(self.keyState.eventKeyNames(event))
+		#print(QtCore.Qt.Key[event.key()])
+		print(keyDict[event.key()])
 
 		sel = self.selectionModel().selectedRows()
 		# don't override anything if editing is in progress
@@ -513,14 +541,13 @@ class TreeWidget(QtWidgets.QTreeView):
 
 				# shift-enter begins editing on value
 				if self.keyState.shift:
-					#indices = [i.siblingAtColumn(1) for i in sel]
 					idx = sel[0].siblingAtColumn(1)
-				else:
-					#indices = sel
+				else: # edit name
 					idx = sel[0]
+				#print("edit idx ", self.model().itemFromIndex(idx))
 				self.edit(idx)
+				#print("edit done")
 				return True
-
 
 			if self.keyState.ctrl:
 				if event.key() == QtCore.Qt.Key_D:  # duplicate
@@ -556,7 +583,7 @@ class TreeWidget(QtWidgets.QTreeView):
 				elif len(sel) > 1:  # parent
 					self.model().parentRows(sel[:-1], sel[-1])
 				return True
-			if event.key() == QtCore.Qt.Key_Tab:
+			if event.key() in (QtCore.Qt.Key_Tab, QtCore.Qt.Key_Backtab):
 				print(self.keyState.shift)
 				if self.keyState.shift: # unparent row
 					print(sel)
@@ -857,6 +884,10 @@ class TreeModel(QtGui.QStandardItemModel):
 			if not index.parent() == QtCore.QModelIndex() else None
 		return result
 
+	@staticmethod
+	def rowFromIndex(index):
+		""" return the row index for either row or value index """
+		return index.parent().child(index.row(), 0)
 
 	def allRows(self, _parent=None):
 		""" return flat list of all row indices """

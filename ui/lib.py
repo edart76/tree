@@ -4,6 +4,7 @@ from PySide2 import QtCore, QtGui, QtWidgets
 from functools import partial
 from sys import version_info
 from collections import OrderedDict
+from six import iteritems
 
 if version_info[0] < 3: # hacky 2-3 compatibility
 	print("py2")
@@ -175,8 +176,6 @@ class KeyState(object):
 		def __bool__(self):
 			return self._val
 
-
-
 	def __init__(self):
 		self.LMB = self._BoolRef(False)
 		self.RMB = self._BoolRef(False)
@@ -192,12 +191,11 @@ class KeyState(object):
 
 		self.keyMap = {
 			self.alt: QtCore.Qt.AltModifier,
-			# self.ctrl: QtCore.Qt.ShiftModifier, ### w h y ###
-			# self.shift: QtCore.Qt.ControlModifier, ### w h y ###
 			self.ctrl: QtCore.Qt.ControlModifier,
 			self.shift: QtCore.Qt.ShiftModifier,
 		}
 		# shift and ctrl are swapped for me I kid you not
+		# I swear to god they actually are
 
 	def mousePressed(self, event):
 		for button, v in self.mouseMap.items():
@@ -213,23 +211,12 @@ class KeyState(object):
 	def keyPressed(self, event):
 		self.syncModifiers(event)
 
+	def eventKeyNames(self, event):
+		return keyDict.get(event.key())
+
 	def syncModifiers(self, event):
 		""" test each individual permutation of keys
-		against event
-		this is ridiculous """
-		# keys = self.keyMap.keys()
-		# for sequence in itertools.combinations_with_replacement(
-		# 		keys, len(keys)):
-		# 	val = self.keyMap[sequence[0]]
-		# 	for key in sequence[1:]: # same values should collapse to single
-		# 		val = val | self.keyMap[key]
-		# 	if event.modifiers() == val:
-		# 		for key in sequence:
-		# 			key(True)
-		# 		return
-		# 	for key in sequence:
-		# 		key(False)
-
+		against event """
 		for key, v in self.keyMap.items():
 			key((event.modifiers() == v)) # not iterable
 		if event.modifiers() == (QtCore.Qt.ShiftModifier | QtCore.Qt.ControlModifier):
@@ -264,5 +251,13 @@ class SelectionModelContainer(object):
 		self._model.setCurrentIndex(index,
 		                            QtCore.QItemSelectionModel.Select |
 		                   QtCore.QItemSelectionModel.Rows)
+	def current(self):
+		return self._model.currentIndex()
+
 	def clear(self):
 		self._model.clear()
+
+
+keyDict = {v : k for k, v in iteritems(QtCore.Qt.__dict__) if "Key_" in k}
+
+

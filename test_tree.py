@@ -19,6 +19,11 @@ tempTree("branchA").value = "first branch"
 tempTree("branchA")("leafA").value = "first leaf"
 tempTree("branchB").value = 2
 
+midTree = tempTree.__deepcopy__()
+midTree("branchA")("listLeaf").value = ["a", "b", 10, "d"]
+midTree("dictBranch").value = {"key" : "value", "oh" : {"baby" : 3}}
+
+
 class TestMainTree(unittest.TestCase):
 	""" test for main tree interface methods """
 

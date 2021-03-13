@@ -236,6 +236,16 @@ class SelectionModelContainer(object):
 	def setSelectionModel(self, model):
 		self._model = model
 
+	@property
+	def rows(self):
+		return self._model.selectedRows()
+	@property
+	def columns(self):
+		return self._model.selectedColumns()
+	@property
+	def indices(self):
+		return self._model.selectedIndexes()
+
 	def add(self, index):
 		if not isinstance(index, QtCore.QModelIndex):
 			index = index.index()
@@ -249,15 +259,21 @@ class SelectionModelContainer(object):
 		                   QtCore.QItemSelectionModel.Rows)
 	def setCurrent(self, index):
 		self._model.setCurrentIndex(index,
-		                            QtCore.QItemSelectionModel.Select |
-		                   QtCore.QItemSelectionModel.Rows)
+		                            QtCore.QItemSelectionModel.Rows
+		                            #|QtCore.QItemSelectionModel.Select
+		                            |QtCore.QItemSelectionModel.Current
+		                            )
 	def current(self):
 		return self._model.currentIndex()
 
 	def clear(self):
+		current = self.current()
 		self._model.clear()
-
+		if current:
+			self.setCurrent(current)
 
 keyDict = {v : k for k, v in iteritems(QtCore.Qt.__dict__) if "Key_" in k}
 
+dropActionDict = {v : k for k, v in iteritems(QtCore.Qt.DropAction.__dict__)
+                  if "Action" in k}
 

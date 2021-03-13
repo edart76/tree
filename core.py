@@ -195,11 +195,12 @@ class TreeBase(object):
 		tree[45] = "test"
 		tree.parent["tree.45"]
 		????????????????????
-		should it just be coerced to string every time?
-		yes
+		__call__ will never allow lookup by indexing -
+		tree(2) searches for the branch named "2"
+		to do this, use:
+		tree.branches[2]
 
-		current system allows lookups by int type,
-		but internally all keys are str, and when queried return str.
+		more explicit, more normal than using __call__ with index
 
 		:returns AbstractTree
 		:rtype AbstractTree"""
@@ -352,7 +353,6 @@ class TreeBase(object):
 
 	def getBranch(self, lookup, default=None):
 		""" returns branch object if it exists or default """
-		#print("getBranch lookup {}".format(lookup))
 		if isinstance(lookup, basestring):
 			lookup = lookup.split(sep)
 		if not lookup:
@@ -474,7 +474,7 @@ class TreeBase(object):
 
 
 	def _address(self, prev=None):
-		"""returns string path from root to this tree
+		"""returns list path from root to this tree
 		does not include root
 		return list of string addresses
 		"""
@@ -626,10 +626,12 @@ class TreeBase(object):
 		return new
 
 
-	def serialise(self):
+	def serialise(self, includeAddress=False):
 		serial = {
 			"?NAME" : self.name,
 		}
+		if includeAddress:
+			serial["?ADDR"] = self.address
 		if self.value is not None:
 			# can be dicey with complex types
 			serial["?VALUE"] = self.value

@@ -3,8 +3,17 @@ Tree data structure.
 
 Single Tree() object. No distinction between branches and leaves - each object may have a value and / or define its own branches.
 
+To create a basic tree:
+![code](https://github.com/edart76/tree/blob/master/example/code_sample.png)
+
+Serialised:
+![serialised](https://github.com/edart76/tree/blob/master/example/serialised.png)
+
+UI widget:
+![widget](https://github.com/edart76/tree/blob/master/example/ui.png)
+
 # Includes :
- - tree.py : base Tree() object, and helper functions for serialisation / deserialisation.
+ - main.py : base Tree() object, and helper functions for serialisation / deserialisation.
  - delta.py : mechanism for creating live "proxies" or references to primitive and Tree objects, tracking changes to the reference as deltas atop the original object. In this way an object's contents can be overridden in the same way as object-oriented inheritance.
  - filetree.py : experiment for applying tree syntax to navigating filesystems.
 

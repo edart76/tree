@@ -13,9 +13,6 @@ class TreeModel(QtGui.QStandardItemModel):
 		self.setTree(tree)
 		self.atRoot = False
 		self.setHorizontalHeaderLabels(["branch", "value"])
-		# self.view = None # hacky
-
-		#self.movingEntries = []  # list of entries being dragged
 
 	# drag and drop support
 	def supportedDropActions(self):
@@ -38,7 +35,6 @@ class TreeModel(QtGui.QStandardItemModel):
 			branch = branchItem.tree
 			info = branch.serialise(includeAddress=True)
 			infos.append(info)
-		# text = str(tree.serialise() )
 		text = str(infos)
 		mime = QtCore.QMimeData()
 		mime.setText(text)
@@ -50,24 +46,17 @@ class TreeModel(QtGui.QStandardItemModel):
 			return True
 		if not data.hasText():
 			return False
-		print("drop action ", dropActionDict[action])
 		mimeText = data.text()
 		infos = eval(mimeText)
 		if not isinstance(infos, list):
 			infos = [infos]
-		print("eval'd info is", infos) # evals to a list
 
-
-		self.layoutAboutToBeChanged.emit()
-
-		#self.beginInsertRows(parentIndex, row, row)
 		for info in infos:
 			tree = Tree.fromDict(info)
 
 			# remove original entries
 			if action == QtCore.Qt.MoveAction and "?ADDR" in info:
 				found = self.tree.getBranch(info["?ADDR"])
-				print("found", found)
 				if found:
 					found.remove()
 
@@ -79,10 +68,7 @@ class TreeModel(QtGui.QStandardItemModel):
 				parentTree = parentItem.tree
 			parentTree.addChild(tree)
 
-		#self.endInsertRows()
 		self.sync()
-		# self.layoutChanged.emit()
-
 		return True
 
 	def branchFromIndex(self, index):
@@ -154,6 +140,8 @@ class TreeModel(QtGui.QStandardItemModel):
 		""" shifts row within its siblings up or down """
 		tree = self.treeFromRow(row)
 		parent = tree.parent
+		if not parent: # shrug
+			return
 		startIndex = tree.index()
 		newIndex = max(0, min(len(parent.branches), startIndex + (-1 if up else 1)))
 		tree.setIndex(newIndex)

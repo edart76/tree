@@ -1,7 +1,4 @@
 
-
-
-
 """ mutable tree data structure
  base functionality before any other modules """
 from __future__ import print_function
@@ -28,9 +25,6 @@ else:
 
 
 
-
-
-
 ####### THE MAIN EVENT ########
 """ there is the capability to change the separator token used by
 tree addresses - I don't know the best way to do that, short of making
@@ -48,8 +42,6 @@ class TreeBase(object):
 	tree addressing was originally inspired by maya attribute syntax,
 	expecting string of "a.b.c" etc
 
-	recently come to see that this is not always ideal, and not sure how
-	best to fix it.
 
 	"""
 	branchesInherit = False

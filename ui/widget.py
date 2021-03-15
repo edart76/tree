@@ -60,18 +60,6 @@ class WheelEventFilter(QtCore.QObject):
 			return QtCore.QObject.eventFilter(self, obj, event)
 
 
-
-
-def removeDuplicates( baseList ):
-	existing = set()
-	result = []
-	for i in baseList:
-		if i not in existing:
-			result.append(i)
-			existing.add(i)
-	return result
-
-
 class TreeWidget(QtWidgets.QTreeView):
 	"""widget for viewing and editing an Tree
 	display values in columns, branches in rows"""
@@ -133,6 +121,7 @@ class TreeWidget(QtWidgets.QTreeView):
 		self.setIndentation(10)
 		self.setAlternatingRowColors(True)
 		self.showDropIndicator()
+		self.setDefaultDropAction(QtCore.Qt.CopyAction)
 
 		self.initActions()
 
@@ -151,6 +140,7 @@ class TreeWidget(QtWidgets.QTreeView):
 		self.collapsed.connect(self.onCollapsed)
 
 		self.expandAll()
+
 
 
 	@property
@@ -270,60 +260,29 @@ class TreeWidget(QtWidgets.QTreeView):
 	def copyEntries(self):
 		clip = QtGui.QGuiApplication.clipboard()
 		indices = self.selectionModel().selectedRows()  # i hate
-		# print "indices {}".format(indices)
-		if not indices:
-			print("no entries selected to copy")
+		if not indices: # nothing to copy
 			return
-		#index = indices[0]  # only copying single entry for now
 		mime = self.model().mimeData(indices)
-		print( "copy mime {}".format(mime.text()))
 		clip.setMimeData(mime)
-		"""get mime of all selected objects
-		set to clipboard
-		"""
 
 	def pasteEntries(self):
-		print("pasting")
 		indices = self.selectedIndexes()  # i strongly hate
 		if not indices:
 			return
 		index = indices[0]
 		clip = QtGui.QGuiApplication.clipboard()
 		data = clip.mimeData()
-		print("mime is {}".format(data.text()))
 		self.model().dropMimeData(data,
 		                          QtCore.Qt.CopyAction,
-		                          index.row(),
-		                          index.column(),
-		                          index.parent())
-		# if not data:
-		# 	print("no data to regenerate")
-		# 	return
-		# try:
-		# 	regenDict = eval(data.text())
-		# except:
-		# 	print("unable to decode {}".format(data.text()))
-		# 	return
-		#
-		# pasteTree = Tree.fromDict(regenDict)
-		#
-		# # get parent item of selected index, addChild with abstract tree,
-		# commonParentIndex = index
-		# commonParentItem = self.model().itemFromIndex(commonParentIndex) \
-		#                    or self.model().invisibleRootItem()
-		#
-		# commonParentItem.tree.addChild(pasteTree)
-		# self.model().buildFromTree(pasteTree, commonParentItem)
-		# pass
+		                          0,
+		                          0,
+		                          index)
+		self.sync()
 
 
-	def dragEnterEvent(self, event):
-		return super(TreeWidget, self).dragEnterEvent(event)
-		# event.accept()
-
-	def dragMoveEvent(self, event):
-		return super(TreeWidget, self).dragMoveEvent(event)
-		# event.accept()
+	def dropEvent(self, event):
+		super(TreeWidget, self).dropEvent(event)
+		self.sync()
 
 	def keyPressEvent(self, event):
 		""" bulk of navigation operations,
@@ -352,7 +311,6 @@ class TreeWidget(QtWidgets.QTreeView):
 		key = event.key()
 		# don't override anything if editing is in progress
 		if self.state() == QtWidgets.QTreeView.EditingState or len(sel) == 0:
-			#return super(TreeWidget, self).keyPressEvent(event)
 			return True
 
 		# editing entry
@@ -368,16 +326,20 @@ class TreeWidget(QtWidgets.QTreeView):
 			return True
 
 		if self.keyState.ctrl and key in \
-			(QtCore.Qt.Key_D, QtCore.Qt.Key_C, QtCore.Qt.Key_V):
+			(QtCore.Qt.Key_D, QtCore.Qt.Key_C,
+			 QtCore.Qt.Key_V, QtCore.Qt.Key_X):
 			if key == QtCore.Qt.Key_D:  # duplicate
 				for row in sel:
 					self.modelObject.duplicateRow(row)
 			elif key == QtCore.Qt.Key_C:  # copy
+				self.copyEntries()
+			elif key == QtCore.Qt.Key_V:
+				self.copyEntries()
 				for row in sel:
-					self.copyEntries()
+					self.model().deleteRow(row)
 			elif key == QtCore.Qt.Key_V:  # paste
-				for row in sel:
-					self.pasteEntries()
+				self.pasteEntries()
+			return True
 
 		# shifting row up or down
 		if self.keyState.shift and self.keyState.ctrl:
@@ -406,7 +368,6 @@ class TreeWidget(QtWidgets.QTreeView):
 				self.model().parentRows(sel[:-1], sel[-1])
 			return True
 		if key in (QtCore.Qt.Key_Tab, QtCore.Qt.Key_Backtab):
-			#print(self.keyState.shift)
 			if self.keyState.shift: # unparent row
 				print(sel)
 				for row in sel:
@@ -441,7 +402,6 @@ class TreeWidget(QtWidgets.QTreeView):
 					if adj["parent"]:
 						target = (i.parent())
 					else: target = i
-				# elif key == QtCore.Qt.Key_Down:
 				else:
 					# down to child
 					if i.child(0, 0).isValid():
@@ -476,30 +436,22 @@ class TreeWidget(QtWidgets.QTreeView):
 
 	def saveAppearance(self):
 		""" saves expansion and selection state """
-		# print("saving appearance")
 		self.savedSelectedTrees = []
 		self.savedExpandedTrees = []
 		self.currentSelected = None
 		for i in self.selectionModel().selectedRows():
 			branch = self.modelObject.treeFromRow(i)
 			self.savedSelectedTrees.append(branch)
-		# print("allrows {}".format(self.modelObject.allRows()))
 		for i in self.modelObject.allRows():
 			if not self.model().checkIndex(i):
 				print("index {} is not valid, skipping".format(i))
-			# print("treeFromRow {}".format(self.modelObject.treeFromRow(i)))
 			if self.isExpanded(i):
-				# print()
-				#try:
 				branch = self.modelObject.treeFromRow(i)
-				# except:
-				# 	branch = None
 				if branch:
 					self.savedExpandedTrees.append(branch)
 		if self.selectionModel().currentIndex().isValid():
 			self.currentSelected = self.model().treeFromRow(
 				self.selectionModel().currentIndex() )
-			# self.currentSelected = self.sel.current()
 		# save viewport scroll position
 		self.scrollPos = self.verticalScrollBar().value()
 
@@ -542,28 +494,27 @@ class TreeWidget(QtWidgets.QTreeView):
 		colour = QtCore.QColor(self.highlightKind[kind])
 		self.highlights[address] = kind
 
-	def _recursiveApply(self, fn, startIndex, callSuper=True,
+	def _recursiveApply(self, fnName, startIndex, callSuper=True,
 	                    ):
 		if callSuper:
-			result = super(TreeWidget, self).fn(startIndex)
+			result = getattr(super(TreeWidget, self), fnName)(startIndex)
 		else: result = None
 		for i in range(self.model().rowCount(startIndex)):
 			childIdx = startIndex.child(i, 0)
-			fn(childIdx)
+			getattr(self, fnName)(childIdx)
 		return result
 
 	def onExpanded(self, index):
 		""" check for shift - recursively expand children if so """
 		if self.keyState.shift:
-			self._recursiveApply(self.expand, index)
+			self._recursiveApply("expand", index)
 	def onCollapsed(self, index):
 		""" check for shift - recursively expand children if so """
 		if self.keyState.shift:
-			self._recursiveApply(self.collapse, index)
-
-
+			self._recursiveApply("collapse", index)
 
 	def display(self):
+		self.sync()
 		print(self.tree.display())
 	#endregion
 

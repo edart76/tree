@@ -156,7 +156,7 @@ from test_tree import tempTree
 t = tempTree
 b = tempTree("branch")
 print("--")
-b in t
+b in t # in calls eq
 print("--")
 b is t
 

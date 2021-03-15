@@ -574,15 +574,7 @@ def test():
 	import sys
 	app = QtWidgets.QApplication(sys.argv)
 	win = QtWidgets.QMainWindow()
-
-	#winLayout = QtWidgets.QVBoxLayout()
-
 	widg = TreeWidget(win, tree=midTree)
-	#winLayout.addWidget(widg)
-	# winLayout.setSpacing(0)
-	# winLayout.setContentsMargins(0, 0, 0, 0)
-
-	#win.setLayout(winLayout)
 	win.setCentralWidget(widg)
 	win.show()
 	sys.exit(app.exec_())
@@ -594,26 +586,3 @@ def test():
 if __name__ == "__main__":
 	w = test()
 	w.show()
-	# test the tree widget
-	# from PySide2 import QtCore
-	# from tree.test_tree import tempTree
-	# import sys
-	# app = QtWidgets.QApplication(sys.argv)
-	# win = QtWidgets.QMainWindow()
-	#
-	# #winLayout = QtWidgets.QGridLayout(win)
-	#
-	# widg = TreeWidget(win, tree=tempTree)
-	# #winLayout.addWidget(widg)
-	# # winLayout.setSpacing(0)
-	# # winLayout.setContentsMargins(0, 0, 0, 0)
-	#
-	#
-	# #win.setLayout(winLayout)
-	# win.setCentralWidget(widg)
-	# s = win.show()
-	# #app.exec_()
-	# sys.exit(app.exec_())
-	#
-	# print(s)
-

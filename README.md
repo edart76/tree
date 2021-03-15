@@ -27,12 +27,16 @@ UI widget:
 data-tree : https://pypi.org/project/data-tree/
  - focus on optimisation
  - *interesting* naming convention for functions and arguments
+
 anytree : anytree.readthedocs.io/en/latest/intro.html
  - discrete classes of tree nodes
  - provides mixin for any python object to be a direct node in the tree, instead of just referenced by a node
  - quite class-heavy
  - fun methods for pretty-printing tree contents
+
 Disney's dRig : https://media.disneyanimation.com/uploads/production/publication_asset/7/asset/dRigTalk_v05.pdf
  - allows live inheritance and overrides by ancestor lookup or by layers
+
 NXT :
  - very interesting
+ - also allows instancing, though less extensively than in dRig

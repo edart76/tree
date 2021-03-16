@@ -12,6 +12,9 @@ Serialised:
 UI widget:
 ![widget](https://github.com/edart76/tree/blob/master/example/ui.png)
 
+# Stability
+Still in active development, but core data structure should be stable for now. Serious breaking changes will be signed clearly going forwards.
+
 # Includes :
  - main.py : base Tree() object, and helper functions for serialisation / deserialisation.
  - delta.py : mechanism for creating live "proxies" or references to primitive and Tree objects, tracking changes to the reference as deltas atop the original object. In this way an object's contents can be overridden in the same way as object-oriented inheritance.

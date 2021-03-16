@@ -17,7 +17,7 @@ import traceback, functools
 from tree.ui.model import TreeModel
 from tree.ui.delegate import AbstractBranchDelegate
 from tree.ui.icons import doIcons, styleSheet, \
-	squareCentre, squareDown, squareSides
+	squareCentre
 
 pyTwo = version_info[0] < 3
 if pyTwo:
@@ -570,7 +570,7 @@ class EditTree(QtWidgets.QUndoCommand):
 
 def test():
 
-	from tree.test_tree import midTree
+	from tree.test.test_tree import midTree
 	import sys
 	app = QtWidgets.QApplication(sys.argv)
 	win = QtWidgets.QMainWindow()

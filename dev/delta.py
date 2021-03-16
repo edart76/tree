@@ -1,20 +1,9 @@
 
 import copy
 
-import importlib
-
 from types import FunctionType, MethodType, BuiltinFunctionType, BuiltinMethodType, LambdaType
 
-from six import iteritems
-import functools
-
-from collections import namedtuple
-
-import difflib
-
-import uuid
-import proxy
-from proxy import Proxy
+from dev.proxy import Proxy
 from lib import trimArgsKwargs
 
 

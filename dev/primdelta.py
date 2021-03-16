@@ -2,16 +2,13 @@
 """ delta extraction for primitive objects and tree """
 
 from six import iteritems
-import functools
 
 from collections import namedtuple
 
 import difflib
 
 import uuid
-import proxy
 
-from core import TreeBase
 
 class ListDelta(object):
 	""" atomic transform for lists

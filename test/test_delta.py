@@ -10,11 +10,9 @@ else:
 	pyTwo = False
 	import unittest
 
-import pprint
-
-from tree import Tree, Signal
-from delta import DeltaProxy, DictDelta, ListDeltaProxy, TreeDelta
-from proxy import Proxy
+from tree import Tree
+from dev.delta import ListDeltaProxy
+from dev.proxy import Proxy
 
 
 def makeTestObjects():

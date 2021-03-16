@@ -4,10 +4,6 @@
 spoofs instance and subclass checking, while avoiding
 inits and new on the target class """
 from pprint import pprint
-import copy
-from collections import OrderedDict
-import inspect
-from weakref import WeakSet
 from abc import ABCMeta, ABC
 
 from six import add_metaclass
@@ -150,7 +146,7 @@ d = "hello"
 print(c is d)
 print("--------")
 
-from test_tree import tempTree
+from unittest.test_tree import tempTree
 
 
 t = tempTree

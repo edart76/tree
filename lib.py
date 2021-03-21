@@ -6,15 +6,9 @@ import string, difflib
 from collections import deque, namedtuple
 import sys, os
 from sys import version_info
+from six import iteritems, string_types
 
 import inspect
-
-
-if version_info[0] < 3: # hacky 2-3 compatibility
-	pyTwo = True
-	basestring = str
-else:
-	pyTwo = False
 
 
 class DiffUndo(object):
@@ -273,10 +267,6 @@ def loadObjectClass(objData):
 		"?CLASS" : class name, }
 		OR
 		tuple of (class name, module path) """
-	try:
-		basestring
-	except:
-		basestring = str
 
 	if isinstance(objData, dict):
 		for i in ("?MODULE", "?CLASS"):
@@ -291,7 +281,7 @@ def loadObjectClass(objData):
 		# sequence [ class, modulepath, regenFn ]
 		path = objData[1]
 		className = objData[0]
-	elif isinstance(objData, basestring):
+	elif isinstance(objData, string_types):
 		className, path = objData.split(uniqueSign)
 
 	#module = convertRootPath( path, toAbsolute=True)

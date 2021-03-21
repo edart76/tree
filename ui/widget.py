@@ -4,6 +4,11 @@
 from __future__ import print_function
 from collections import OrderedDict
 from PySide2 import QtCore, QtWidgets, QtGui
+from sys import version_info
+import traceback, functools
+
+from six import iteritems
+
 from main import Tree
 from signal import Signal
 #from delta import TreeDelta
@@ -11,18 +16,11 @@ from signal import Signal
 from tree.ui.lib import KeyState, PartialAction, ContextMenu, SelectionModelContainer
 # from tree.ui.style import style
 
-from sys import version_info
-import traceback, functools
-
 from tree.ui.model import TreeModel
-from tree.ui.delegate import AbstractBranchDelegate
+from tree.ui.delegate import TreeNameDelegate, TreeValueDelegate
 from tree.ui.icons import doIcons, styleSheet, \
 	squareCentre
 
-pyTwo = version_info[0] < 3
-if pyTwo:
-	dict.items = dict.iteritems
-	OrderedDict.items = OrderedDict.iteritems
 
 # decorator for widget event methods to catch any exceptions
 def catchAll(fn, logFunction=print):
@@ -36,7 +34,6 @@ def catchAll(fn, logFunction=print):
 			traceback.print_exc()
 			logFunction(e)
 	return inner
-
 
 
 shrinkingPolicy = QtWidgets.QSizePolicy(
@@ -90,7 +87,6 @@ class TreeWidget(QtWidgets.QTreeView):
 		#self.setDropIndicatorShown()
 		self.setAutoScroll(False)
 		self.setFocusPolicy(QtCore.Qt.ClickFocus)
-		self.setItemDelegate(AbstractBranchDelegate())
 		self.menu = ContextMenu(self)
 
 		self.sizeChanged = Signal()
@@ -107,6 +103,9 @@ class TreeWidget(QtWidgets.QTreeView):
 		self.modelObject = None
 
 		# appearance
+		self.setItemDelegateForColumn(0, TreeNameDelegate(self))
+		self.setItemDelegateForColumn(1, TreeValueDelegate(self))
+
 		header = self.header()
 		header.setSectionResizeMode(QtWidgets.QHeaderView.ResizeToContents)
 		header.setStretchLastSection(True)

@@ -1,9 +1,5 @@
 
 from sys import version_info
-if version_info[0] < 3: # hacky 2-3 compatibility
-	pyTwo = True
-else:
-	pyTwo = False
 
 
 import inspect

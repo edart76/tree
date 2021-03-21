@@ -11,18 +11,7 @@ import pprint, uuid
 from collections import OrderedDict
 from tree.signal import Signal
 
-import six
-
-
-if version_info[0] < 3: # hacky 2-3 compatibility
-	pyTwo = True
-	# dict.items = dict.iteritems
-	OrderedDict.items = OrderedDict.iteritems
-
-else:
-	pyTwo = False
-	basestring = str
-
+from six import iteritems, string_types
 
 
 ####### THE MAIN EVENT ########
@@ -345,7 +334,7 @@ class TreeBase(object):
 
 	def getBranch(self, lookup, default=None):
 		""" returns branch object if it exists or default """
-		if isinstance(lookup, basestring):
+		if isinstance(lookup, string_types):
 			lookup = lookup.split(sep)
 		if not lookup:
 			return self
@@ -368,7 +357,7 @@ class TreeBase(object):
 				result = result or self.get(i, None)
 			return result or default
 
-		if isinstance(lookup, basestring):
+		if isinstance(lookup, string_types):
 			lookup = lookup.split(sep)
 		name = lookup.pop(0)
 		if name not in self._branchMap.keys():
@@ -406,7 +395,7 @@ class TreeBase(object):
 		return index
 
 	def items(self):
-		return six.iteritems(self._branchMap)
+		return iteritems(self._branchMap)
 
 	def values(self):
 		return self._branchMap.values()
@@ -414,14 +403,9 @@ class TreeBase(object):
 	def keys(self):
 		return self._branchMap.keys()
 
-	# def iteritems(self):
-	# 	return zip(self._branchMap.keys(),
-	# 	           [i.value for i in self._branchMap.values()]
-	# 	           )
-
 	def iterBranches(self):
 		# return self._branchMap.items()
-		return six.iteritems(self._branchMap)
+		return iteritems(self._branchMap)
 
 	def allBranches(self, includeSelf=True, depthFirst=True):
 		""" returns list of all tree objects

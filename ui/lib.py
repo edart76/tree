@@ -4,18 +4,8 @@ from PySide2 import QtCore, QtGui, QtWidgets
 from functools import partial
 from sys import version_info
 from collections import OrderedDict
-from six import iteritems
+from six import iteritems, string_types
 
-if version_info[0] < 3: # hacky 2-3 compatibility
-	print("py2")
-	pyTwo = True
-	dict.items = dict.iteritems
-	OrderedDict.items = OrderedDict.iteritems
-
-else:
-	print("py3")
-	pyTwo = False
-	basestring = str
 
 class PartialAction(QtWidgets.QAction):
 	""" use partial as input to qt action """

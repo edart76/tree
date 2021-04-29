@@ -9,6 +9,7 @@ from tree.lib import incrementName, saveObjectClass, loadObjectClass, \
 
 import pprint, uuid
 from collections import OrderedDict
+from enum import Enum
 from tree.signal import Signal
 
 from six import iteritems, string_types
@@ -18,9 +19,9 @@ from six import iteritems, string_types
 """ there is the capability to change the separator token used by
 tree addresses - I don't know the best way to do that, short of making
 it an instance attribute """
-sep = "."
+# sep = "."
 # separator = "/"
-parentToken = "^" # directs to the tree's parent
+# parentToken = "^" # directs to the tree's parent
 # parentToken = .."
 class TreeBase(object):
 	"""fractal tree-like data structure
@@ -31,13 +32,18 @@ class TreeBase(object):
 	tree addressing was originally inspired by maya attribute syntax,
 	expecting string of "a.b.c" etc
 
-
 	"""
+
+	# child and parent tokens for addresses
+	sep = "."
+	parentToken = "^"
+	# these can be reset directly on tree instances to customise syntax
+
 	branchesInherit = False
 
 	debugOn = False
 
-	class StructureEvents(object):
+	class StructureEvents(Enum):
 		""" very janky enum-like"""
 		branchAdded = 1
 		branchRemoved = 2
@@ -45,6 +51,13 @@ class TreeBase(object):
 
 	# keys in extras that play important roles
 	extraKeys = ("default", "readOnly", "active", "breakpoint")
+
+	# kwargs that may be passed with lookup
+	lookupKwargs = {
+		"create" : True, # should branch be created if not found
+		"extras" : None, # 'extra' values to be set on branch creation
+		"case": True,  # should lookup respect casing
+	}
 
 	def __init__(self, name=None, val=None):
 		self._name = str(name) if name else None
@@ -55,9 +68,6 @@ class TreeBase(object):
 		self._branchMap = OrderedDict()
 		self.extras = {}
 		self.overrides = {}
-
-		# separator used to join string addresses
-		self.sep = sep
 
 		# signals - on branch changing, all parent branch signals
 		# will be activated
@@ -73,14 +83,14 @@ class TreeBase(object):
 		                self.nameChanged,
 		                self.structureChanged)
 
-
 		# read-only attr
 		self.readOnly = False
 		self.active = True
 
 	@classmethod
 	def _defaultCls(cls):
-		return NotImplementedError
+		"""Tree class to use for leaves by default"""
+		return TreeBase
 
 	@property
 	def name(self):
@@ -153,29 +163,36 @@ class TreeBase(object):
 	def branches(self):
 		"""more explicit that it returns the child tree objects
 		:rtype list( AbstractTree )"""
-		return self.values()
+		return self._branchMap.values()
 
 	def debug(self, info):
 		if self.debugOn:
 			print(info)
 
-	def __getitem__(self, address):
-		""" allows lookups of string form "root.branchA.leaf"
-		"""
-		return self(address).value
+	def _branchFromToken(self, token):
+		""" given single address token, return a known branch or none """
 
-	def __setitem__(self, key, value):
-		""" assuming that setting tree values is far more frequent than
-		setting actual tree objects """
-		self(key).value = value
+	@classmethod
+	def _parseAddressTokens(cls, tokenArgs):
+		""" returns uniform list from address tokens
+		direct lookup in this way will probably always be simple
+		more complex logic should be handled by other functions,
+		for ease of reading
+		:type tokenArgs : tuple"""
+		result = []
+		for token in tokenArgs:
+			if isinstance(token, string_types):
+				result += list(token.split(cls.sep))
+			elif isinstance(token, (list, tuple)):
+				result += cls._parseAddressTokens(token)
+		return result
+
+
 
 	def __call__(self, *address, **kwargs):
 		""" allows lookups of string form "root.branchA.leaf"
 		kwargs will be passed to extras
 
-		tree[45] = "test"
-		tree.parent["tree.45"]
-		????????????????????
 		__call__ will never allow lookup by indexing -
 		tree(2) searches for the branch named "2"
 		to do this, use:
@@ -185,30 +202,19 @@ class TreeBase(object):
 
 		:returns AbstractTree
 		:rtype AbstractTree"""
-
-		self.debug(address)
-
-		if len(address) == 1:
-			address = address[0]
-
-		if not address: # empty list
+		self.debug(("args", address))
+		if not address:
 			return self
-		if isinstance(address, (list, tuple)):
-			address = list(address)
-			pass
-		# elif isinstance(address, basestring):
-		else:
-			address = str(address).split(sep)
+		address = self._parseAddressTokens(address)
 
 		# all input coerced to list
 		first = str(address.pop(0))
-
-		if first == parentToken: # aka unix ../
+		if first == self.parentToken: # aka unix ../
 			return self.parent(address)
 		if not first in self._branchMap: # add it if doesn't exist
 			if self.readOnly:
-				raise RuntimeError( "readOnly tree accessed improperly - "
-									"no address {}".format(first))
+				raise RuntimeError( "readOnly tree {} accessed improperly - \n"
+									"no address {}".format(self, first))
 			# check if branch should inherit directly, or
 			# remain basic tree object
 			if self.branchesInherit:
@@ -219,23 +225,24 @@ class TreeBase(object):
 			for key in self.extraKeys:
 				if key in kwargs.get("extras", []):
 					obj.extras[key] = kwargs[key]
-
+			self.debug(("added obj", obj))
 			branch = self.addChild(obj)
-
-			# if a new branch has been created on the final item,
-			# set its value
-			# eg tree("a", "b", value=2) ->
-			# final branch b has its value set if created
-
 
 		else: # branch name might be altered
 			branch = self._branchMap[first]
+			self.debug(("found branch", branch))
+
 		return branch(*address, **kwargs)
 
-	def _branchFromToken(self, token):
-		""" given single address token, return a known branch or none """
+	def __getitem__(self, address, **kwargs):
+		""" returns direct value of lookup branch
+		"""
+		return self(address, **kwargs).value
 
-
+	def __setitem__(self, key, value, **kwargs):
+		""" assuming that setting tree values is far more frequent than
+		setting actual tree objects """
+		self(key, **kwargs).value = value
 
 	def __repr__(self):
 		return "<{} ({}) : {}>".format(self.__class__, self.name, self.value)
@@ -262,11 +269,12 @@ class TreeBase(object):
 		""" I found strict 'is' check more often useful
 		use containsEq for equivalence """
 		if isinstance(item, TreeBase):
-			return any([ b is item for b in self._branchMap.values()])
+			return self.contains(item, equivalent=False)
+		return False
 
 	def __eq__(self, other):
-		""" equivalence considers only hash, analoguous to 'is'
-		checking equivalent contents was a bit too broad """
+		""" equivalence considers value, branch names and extras
+		for exact comparison use 'is' """
 		if isinstance(other, TreeBase):
 			return self.isEquivalent(other)
 		return NotImplementedError
@@ -306,11 +314,8 @@ class TreeBase(object):
 		if branch in self: # same object
 			print("cannot add existing branch, named " + branch.name)
 			return branch
-		while branch.name in self.keys():
-			if force: # override old branch with new
-				break
-			else:
-				# print("cannot add duplicate child of name {}".format(branch.name))
+		if not force: # increment name until valid name found
+			while branch.name in self.keys():
 				branch._setName(incrementName(
 					branch.name, self.keys()))
 
@@ -332,10 +337,10 @@ class TreeBase(object):
 		return branch
 
 
-	def getBranch(self, lookup, default=None):
-		""" returns branch object if it exists or default """
-		if isinstance(lookup, string_types):
-			lookup = lookup.split(sep)
+	def getBranch(self, lookup, default=None, **kwargs):
+		""" returns branch object if it exists or default
+		only supports single level """
+		lookup = self._parseAddressTokens((lookup,))
 		if not lookup:
 			return self
 		name = lookup.pop(0)
@@ -350,29 +355,19 @@ class TreeBase(object):
 		addresses will recurse into child branches
 		duplication here from main address system, fix it
 		RETURNS VALUE"""
-		#if isinstance(lookup, (list, tuple)):
-		if hasattr(lookup, "__iter__"):
-			result = None
-			for i in lookup:
-				result = result or self.get(i, None)
-			return result or default
+		result = self.getBranch(lookup)
+		if result:
+			return result.value
+		return default
 
-		if isinstance(lookup, string_types):
-			lookup = lookup.split(sep)
-		name = lookup.pop(0)
-		if name not in self._branchMap.keys():
-			return default
-		if lookup:
-			return self._branchMap[name].get(lookup)
-		return self._branchMap[name].value
-
-	def getInherited(self, lookup, default=None):
-		""" searches this branch and all ancestors for occurrences
-		of lookup, then returns its value """
-		return self.get(lookup,
-		                self.parent.getInherited(lookup, default)
-			if self.parent else default)
-
+	####### DISABLED for now ######
+	# def getInherited(self, lookup, default=None):
+	# 	""" searches this branch and all ancestors for occurrences
+	# 	of lookup, then returns its value """
+	# 	return self.get(lookup,
+	# 	                self.parent.getInherited(lookup, default)
+	# 		if self.parent else default)
+	###### need to find a good way to handle this #####
 
 	def index(self, lookup=None, *args, **kwargs):
 		if lookup is None: # get tree's own index
@@ -393,12 +388,6 @@ class TreeBase(object):
 		if self.parent:
 			index += self.parent.flattenedIndex() + 1
 		return index
-
-	def items(self):
-		return iteritems(self._branchMap)
-
-	def values(self):
-		return self._branchMap.values()
 
 	def keys(self):
 		return self._branchMap.keys()
@@ -426,7 +415,7 @@ class TreeBase(object):
 	def iterAllBranches(self):
 		""" not necessary yet, but will be for colossal trees
 		like file systems
-		recursive iterators only possible in python 3 though"""
+		"""
 		pass
 
 	def isEquivalent(self, branch, includeBranches=True):
@@ -446,7 +435,10 @@ class TreeBase(object):
 		""" more explicit contains check, allowing for equivalence,
 		inheritance, etc
 		"""
-		return any([branch.isEquivalent(i) for i in self.branches])
+		if equivalent:
+			return any([branch.isEquivalent(i) for i in self.branches])
+		else:
+			return any([branch is i for i in self.branches])
 
 
 	def _address(self, prev=None):
@@ -462,7 +454,7 @@ class TreeBase(object):
 
 	def stringAddress(self):
 		""" returns the address sequence joined by the tree separator """
-		return sep.join(self.address)
+		return self.sep.join(self.address)
 
 	def search(self, path, onlyChildren=True):
 		""" searches branches for trees matching a partial path,

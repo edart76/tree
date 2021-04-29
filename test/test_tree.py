@@ -1,6 +1,7 @@
 
 from __future__ import print_function
 from sys import version_info
+import os
 if version_info[0] < 3:
 	pyTwo = True
 	#import unittest2 as unittest
@@ -23,6 +24,13 @@ midTree = tempTree.__deepcopy__()
 midTree("branchA")("listLeaf").value = ["a", "b", 10, "d"]
 midTree("dictBranch").value = {"key" : "value", "oh" : {"baby" : 3}}
 
+jsonOutPath = os.path.sep.join(
+	os.path.split(__file__ )[:-1]) + "testLog.json"
+
+class CustomTreeType(Tree):
+	branchesInherit = True
+	pass
+
 
 class TestMainTree(unittest.TestCase):
 	""" test for main tree interface methods """
@@ -31,6 +39,7 @@ class TestMainTree(unittest.TestCase):
 		""" construct a basic test tree """
 
 		self.tree = Tree(name="testRoot", val="tree root")
+		# self.tree.debugOn = True
 		self.tree("branchA").value = "first branch"
 		self.tree("branchA")("leafA").value = "first leaf"
 		self.tree("branchB").value = 2
@@ -56,9 +65,16 @@ class TestMainTree(unittest.TestCase):
 		              self.tree("branchA")("leafA"),
 		              msg="error in token retrieval")
 		# sequence retrieval
-		self.assertIs(self.tree(["branchA", "leafA"]),
-		              self.tree("branchA")("leafA"),
-		              msg="error in list retrieval")
+		# self.assertIs(self.tree(["branchA", "leafA"]),
+		#               self.tree("branchA")("leafA"),
+		#               msg="error in list retrieval")
+		# NOT USED YET
+
+		# string retrieval
+		self.assertEqual( self.tree(
+			self.tree.sep.join(["branchA", "leafA"])),
+			self.tree("branchA")("leafA"),
+		                 msg="string address error")
 
 
 	def test_treeAddresses(self):
@@ -84,14 +100,16 @@ class TestMainTree(unittest.TestCase):
 	def test_treeEquality(self):
 		""" testing distinction between identity and equality """
 		newBranch = self.tree("branchA", "new")
+		self.assertTrue(newBranch in self.tree("branchA"),
+		                msg="Tree does not contain its branch")
 		newCopy = newBranch.__copy__()
 		self.assertEqual(newBranch, newCopy,
 		                 msg="branch and its shallow copy are not equal")
 		self.assertFalse(newBranch is newCopy,
 		                 msg="branch IS its copy")
-		self.assertTrue(newBranch in self.tree("branchA"),
-		                msg="tree does not contain its branch")
-		self.assertFalse(newCopy in self.tree("branchA"),
+		# self.assertTrue(newBranch is self.tree("branchA"),
+		#                 msg="tree does not contain its branch")
+		self.assertFalse(newCopy is self.tree("branchA"),
 		                 msg="tree contains copy of its branch")
 
 
@@ -101,15 +119,26 @@ class TestMainTree(unittest.TestCase):
 		should get more advanced testing here, serialisation
 		needs to support more stuff """
 
-		#pprint.pprint(self.tree.serialise())
-		#print(self.tree.serialise())
-
 		self.assertEqual(self.tree.serialise(), self.serialisedTruth,
 		                 msg="mismatch in serialised data")
+		restoreTree = self.tree.fromDict(self.tree.serialise())
+		self.assertEqual(self.tree, restoreTree,
+		                 msg="restored tree not equal to its source")
+
 
 	def test_treeRegeneration(self):
 		""" test regeneration from dict """
 		self.assertEqual(Tree.fromDict(self.tree.serialise()), self.tree)
+
+	def test_treeTyping(self):
+		""" test custom tree types in contiguous hierarchy """
+		self.tree.addChild(
+			CustomTreeType("customBranch", val=34535))
+		restoreTree = self.tree.fromDict(self.tree.serialise())
+		self.assertEqual(self.tree, restoreTree,
+		                 msg="restored custom tree not equal to its source")
+		self.assertIs(type(restoreTree("customBranch")), CustomTreeType,
+		                 msg="restored custom type not equal to its source")
 
 
 

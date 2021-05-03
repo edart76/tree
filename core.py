@@ -14,11 +14,17 @@ from tree.signal import Signal
 
 from six import iteritems, string_types
 
+"""TODO :
+- Proper solution for looking up matching values on parent branches,
+	via getInherited(). Maybe a key lambda / function, like sorted()?
+	Also ensure we respect breakpoints in tree - if a tree is a breakpoint,
+	it acts like a root for all trees under it
+- Proper iterators, as with os.walk()
+- Figure out how to treat the modification signals -
+	stack frames vs consolidation
+"""
 
 ####### THE MAIN EVENT ########
-""" there is the capability to change the separator token used by
-tree addresses - I don't know the best way to do that, short of making
-it an instance attribute """
 # sep = "."
 # separator = "/"
 # parentToken = "^" # directs to the tree's parent
@@ -502,7 +508,6 @@ class TreeBase(object):
 				newDict[k] = v
 			self.parent._branchMap = newDict
 		self._name = name
-		#self.structureChanged(self, self.parent, self.StructureEvents.branchRenamed)
 		self.nameChanged(self, oldName, name)
 		return name
 
@@ -594,6 +599,13 @@ class TreeBase(object):
 		return new
 
 
+	def rootData(self):
+		"""Returns any data needed to describe the whole tree
+		in its serialised state -
+		for now nothing"""
+		return {
+		}
+
 	def serialise(self, includeAddress=False):
 		serial = {
 			"?NAME" : self.name,
@@ -607,6 +619,11 @@ class TreeBase(object):
 			serial["?CHILDREN"] = [i.serialise() for i in self._branchMap.values()]
 		if self.extras:
 			serial["?EXTRAS"] = self.extras
+
+		"""If tree has a parent, and its class does not match
+		this branch, serialise ref to class of this branch
+		alongside it
+		"""
 		if self.parent:
 
 			if self.parent.__class__ != self.__class__:
@@ -614,6 +631,14 @@ class TreeBase(object):
 				serial["objData"] = objData
 				# it now costs exactly one extra line to define the child class
 				# it's worth it to avoid the pain of adaptive definition
+		else:
+			""" If tree does not have a parent, insert a data format
+			version number at root of dictionary
+			In future this will be handled by the FormatManager
+			"""
+			if self.rootData():
+				serial["?ROOT_DATA"] = self.rootData()
+			serial["?FORMAT_VERSION"] = 0
 
 		# always returns dict
 		return serial

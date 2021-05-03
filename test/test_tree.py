@@ -44,7 +44,8 @@ class TestMainTree(unittest.TestCase):
 		self.tree("branchA")("leafA").value = "first leaf"
 		self.tree("branchB").value = 2
 
-		self.serialisedTruth = {'?VALUE': 'tree root', '?CHILDREN': [{'?VALUE': 'first branch', '?CHILDREN': [{'?VALUE': 'first leaf', '?NAME': 'leafA'}], '?NAME': 'branchA'}, {'?VALUE': 2, '?NAME': 'branchB'}], '?NAME': 'testRoot'}
+		self.serialisedTruth = {'?VALUE': 'tree root', '?CHILDREN': [{'?VALUE': 'first branch', '?CHILDREN': [{'?VALUE': 'first leaf', '?NAME': 'leafA'}], '?NAME': 'branchA'}, {'?VALUE': 2, '?NAME': 'branchB'}], '?NAME': 'testRoot',
+		                        '?FORMAT_VERSION': 0,}
 
 	def test_treeRoot(self):
 		""" test that tree objects find their root properly """
@@ -75,6 +76,11 @@ class TestMainTree(unittest.TestCase):
 			self.tree.sep.join(["branchA", "leafA"])),
 			self.tree("branchA")("leafA"),
 		                 msg="string address error")
+
+		# parent retrieval
+		self.assertEqual( self.tree("branchA", "leafA", "superleafA"),
+		                  self.tree("branchA", "leafA", "superleafA",
+		                            "^", "^", "leafA", "superleafA"))
 
 
 	def test_treeAddresses(self):

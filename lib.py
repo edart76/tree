@@ -198,7 +198,6 @@ def trimArgsKwargs(fn, givenArgs, givenKwargs=None):
 		          k in argSpec.kwonlyargs}
 	return (args, kwargs)
 
-uniqueSign = "|@|" # something that will never appear in file path
 
 
 def incrementName(name, currentNames=None):
@@ -238,6 +237,7 @@ def safeLoadModule(modName, force=False, logFunction=None):
 		logFunction("error is {}".format(str(e)))
 	return module
 
+uniqueSign = "|@|" # something that will never appear in file path
 
 def saveObjectClass(obj, regenFunc="fromDict", relative=True, uniqueKey=True,
 					legacy=False):

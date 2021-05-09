@@ -285,6 +285,13 @@ class TreeBase(object):
 			return self.isEquivalent(other)
 		return NotImplementedError
 
+	def __lt__(self, other):
+		if not isinstance(other, TreeBase):
+			raise TypeError(
+				"comparison not supported with {}".format(
+					other, other.__class__))
+		return self.name < other.name
+
 	def __hash__(self):
 		""" hash is unique per object """
 		return hash(self.uuid)

@@ -1,7 +1,7 @@
 """ thoughts on the true philosophical nature of trees """
 
 import weakref
-
+import networkx
 
 """
 consider that instancing objects creates effectively a new dependency graph
@@ -27,7 +27,16 @@ class Graph(object):
 
 class Node(object):
 
-	def __init__(self):
+	def __init__(self, name=None):
+		self.name = name
 		self.connections = {}
+
+class TreeNode(Node):
+	""" more specific node for tree structures
+	not ENTIRELY sure if this should be the final tree node class,
+	or if there should be additional layers
+	"""
+	def __init__(self, name=None, value=None):
+		pass
 
 

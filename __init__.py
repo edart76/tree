@@ -13,10 +13,12 @@ and only types included here are considered forwards compatible.
 
 from .main import Tree
 from .signal import Signal
+from .ui import TreeWidget
 #from dev.tree2 import Graph
 __all__ = [
 	"Tree",
 	"Signal",
+	"TreeWidget",
 	# "Graph",
 ]
 

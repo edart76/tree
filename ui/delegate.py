@@ -1,5 +1,5 @@
 
-import ast, json
+import ast, json, re
 from six import string_types, iteritems
 from pprint import pprint
 
@@ -75,11 +75,38 @@ ast.unparse(), which is new, this only works
 one way - trashy string functions used to remove quotes
 """
 
+literalTypes = (
+	bool, int, float,
+)
+
+# regex checking for scientific notation
+sciNotationReg = r"^[+\-]?(?=\.\d|\d)(?:0|[1-9]\d*)?(?:\.\d*)?(?:\d[eE][+\-]?\d+)?$"
+
+# test = "3.4e10"
+# pattern = re.compile(sciNotationReg)
+# result = re.findall(pattern, test)
+# print(result)
+# test = ".e"
+# result = re.findall(pattern, test)
+# print(result)
+
+def quotelessFn(value):
+	if isinstance(value, dict):
+		return mapToQuotelessStr
+	elif hasattr(value, "__iter__") and not\
+		isinstance(value, string_types):
+		return seqToQuotelessStr
+	return None
+
 def seqToQuotelessStr(seq):
 	""" given sequence, return a string of it
 	with all internal string quotes removed """
 	tokens = [] # individual quoteless tokens
+	print(seq)
 	for item in seq:
+		if isinstance(item, literalTypes):
+			tokens.append(str(item))
+			continue
 		if quotelessFn(item):
 			item = quotelessFn(item)(item)
 		# check for escaped \"
@@ -106,13 +133,7 @@ def mapToQuotelessStr(inMap):
 	resultStr = "{ " + sep.join(tokens) + " }"
 	return resultStr
 
-def quotelessFn(value):
-	if isinstance(value, dict):
-		return mapToQuotelessStr
-	elif hasattr(value, "__iter__") and not\
-		isinstance(value, string_types):
-		return seqToQuotelessStr
-	return None
+
 
 
 class ASTNameToConstant(ast.NodeTransformer):
@@ -158,6 +179,11 @@ def objToQuoteless(obj):
 def quotelessToObj(value=""):
 	""" given quoteless string, return string, dict or obj """
 	value = value.rstrip()
+	# check for sci notation
+	if re.findall(sciNotationReg, value):
+		print("sci found", value)
+		return value
+
 	try:
 		result = ast.parse(value, mode="eval")
 	except: # for simple unquoted strings this fails

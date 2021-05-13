@@ -1,7 +1,7 @@
 
 """ mutable tree data structure
  base functionality before any other modules """
-from __future__ import print_function
+from __future__ import annotations
 from sys import version_info
 
 from tree.lib import incrementName, saveObjectClass, loadObjectClass, \
@@ -11,7 +11,7 @@ import pprint, uuid
 from collections import OrderedDict
 from enum import Enum
 from tree.signal import Signal
-
+from typing import List, Union
 from six import iteritems, string_types
 
 """TODO :
@@ -29,6 +29,7 @@ from six import iteritems, string_types
 # separator = "/"
 # parentToken = "^" # directs to the tree's parent
 # parentToken = .."
+
 class TreeBase(object):
 	"""fractal tree-like data structure
 	each branch having both name and value
@@ -50,7 +51,6 @@ class TreeBase(object):
 	debugOn = False
 
 	class StructureEvents(Enum):
-		""" very janky enum-like"""
 		branchAdded = 1
 		branchRemoved = 2
 		#branchRenamed = 3
@@ -65,7 +65,9 @@ class TreeBase(object):
 		"case": True,  # should lookup respect casing
 	}
 
-	def __init__(self, name=None, val=None):
+	def __init__(self, name=None, val=None,
+	             branches=None, # will be added in future
+	             ):
 		self._name = str(name) if name else None
 		self._uuid = None
 		self._parent = None
@@ -99,7 +101,7 @@ class TreeBase(object):
 		return TreeBase
 
 	@property
-	def name(self):
+	def name(self)->str:
 		return self._name
 
 	@name.setter
@@ -115,35 +117,35 @@ class TreeBase(object):
 		return self._uuid
 
 	@property
-	def parent(self):
+	def parent(self)->TreeBase:
 		""":rtype AbstractTree"""
-		return self._parent #type : AbstractTree
+		return self._parent
 	@parent.setter
-	def parent(self, val):
+	def parent(self, val:TreeBase):
 		""" this should be removed, addChild is the correct way to do it """
 		self._setParent(val)
 
 	@property
-	def siblings(self):
+	def siblings(self)->List[TreeBase]:
 		if self.parent:
 			return self.parent.branches.remove(self)
 		return []
 
 	@property
-	def root(self):
+	def root(self)->TreeBase:
 		"""returns root tree object
 		consider possibly denoting arbitrary points in tree as breakpoints,
 		roots only to branches under them """
 		return self.parent.root if self.parent else self
 
 	@property
-	def leaves(self):
+	def leaves(self)->List[TreeBase]:
 		"""returns branches under this branch
 		which do not have branches of their own"""
 		return [i for i in self.allBranches(False) if not i.branches]
 
 	@property
-	def address(self):
+	def address(self)->str:
 		return self._address()
 
 	@property
@@ -166,10 +168,10 @@ class TreeBase(object):
 			self.valueChanged(self, oldValue=oldVal, newValue=val)
 
 	@property
-	def branches(self):
+	def branches(self)->List[TreeBase]:
 		"""more explicit that it returns the child tree objects
 		:rtype list( AbstractTree )"""
-		return self._branchMap.values()
+		return list(self._branchMap.values())
 
 	def debug(self, info):
 		if self.debugOn:
@@ -195,7 +197,7 @@ class TreeBase(object):
 
 
 
-	def __call__(self, *address, **kwargs):
+	def __call__(self, *address, **kwargs)->TreeBase:
 		""" allows lookups of string form "root.branchA.leaf"
 		kwargs will be passed to extras
 
@@ -253,7 +255,7 @@ class TreeBase(object):
 	def __repr__(self):
 		return "<{} ({}) : {}>".format(self.__class__, self.name, self.value)
 
-	def __copy__(self):
+	def __copy__(self)->TreeBase:
 		""" create shallow copy of this tree -
 		new tree object, new internal map, same
 		tree objects in map """
@@ -263,7 +265,7 @@ class TreeBase(object):
 		tree._branchMap = OrderedDict(self._branchMap)
 		return tree
 
-	def __deepcopy__(self):
+	def __deepcopy__(self)->TreeBase:
 		""":returns Tree"""
 		return self.fromDict(self.serialise())
 
@@ -350,7 +352,7 @@ class TreeBase(object):
 		return branch
 
 
-	def getBranch(self, lookup, default=None, **kwargs):
+	def getBranch(self, lookup, default=None, **kwargs)->Union[TreeBase, None]:
 		""" returns branch object if it exists or default
 		only supports single level """
 		lookup = self._parseAddressTokens((lookup,))
@@ -409,7 +411,7 @@ class TreeBase(object):
 		# return self._branchMap.items()
 		return iteritems(self._branchMap)
 
-	def allBranches(self, includeSelf=True, depthFirst=True):
+	def allBranches(self, includeSelf=True, depthFirst=True)->List[TreeBase]:
 		""" returns list of all tree objects
 		depth first
 		:returns [Tree]"""
@@ -465,7 +467,7 @@ class TreeBase(object):
 		prev.insert(0, self.name)
 		return self.parent._address(prev=prev)
 
-	def stringAddress(self):
+	def stringAddress(self)->str:
 		""" returns the address sequence joined by the tree separator """
 		return self.sep.join(self.address)
 
@@ -569,7 +571,7 @@ class TreeBase(object):
 
 
 	@classmethod
-	def fromDict(cls, regenDict):
+	def fromDict(cls, regenDict)->TreeBase:
 		"""expects dict of format
 		name : eyy
 		value : whatever
@@ -613,7 +615,7 @@ class TreeBase(object):
 		return {
 		}
 
-	def serialise(self, includeAddress=False):
+	def serialise(self, includeAddress=False)->dict:
 		serial = {
 			"?NAME" : self.name,
 		}

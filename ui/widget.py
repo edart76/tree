@@ -9,14 +9,15 @@ import traceback, functools
 
 from six import iteritems
 
-from main import Tree
-from signal import Signal
+from tree.main import Tree
+from tree.signal import Signal
 #from delta import TreeDelta
 
 from tree.ui.lib import KeyState, PartialAction, ContextMenu, SelectionModelContainer
 # from tree.ui.style import style
 
 from tree.ui.model import TreeModel
+
 from tree.ui.delegate import TreeNameDelegate, TreeValueDelegate
 from tree.ui.icons import doIcons, styleSheet, \
 	squareCentre
@@ -56,6 +57,17 @@ class WheelEventFilter(QtCore.QObject):
 		else:
 			return QtCore.QObject.eventFilter(self, obj, event)
 
+class AllEventEater(QtCore.QObject):
+	# the hunger
+	def eventFilter(self, watched:QtCore.QObject,
+	                event:QtCore.QEvent):
+		if any([event.type() == i for i in [
+			QtCore.QEvent.Timer,
+		]]):
+			return QtCore.QObject.eventFilter(self, watched, event)
+		print("stopped", event)
+		return True
+
 
 class TreeWidget(QtWidgets.QTreeView):
 	"""widget for viewing and editing an Tree
@@ -72,6 +84,7 @@ class TreeWidget(QtWidgets.QTreeView):
 		super(TreeWidget, self).__init__(parent)
 		self.setSizePolicy(expandingPolicy)
 		# self.installEventFilter(WheelEventFilter(self))
+		#self.installEventFilter(AllEventEater(self))
 		if doIcons:
 			self.setWindowIcon(QtGui.QIcon(squareCentre))
 			self.setStyleSheet(styleSheet)
@@ -233,6 +246,7 @@ class TreeWidget(QtWidgets.QTreeView):
 		# pos = self.viewport().mapFromGlobal( self.mapToGlobal( event.pos()))
 		pos = self.mapToGlobal(event.pos())
 		menu = self.menu.exec_(pos)
+		event.accept()
 
 	def makeMenu(self):
 		""" create context menu """
@@ -565,6 +579,12 @@ class EditTree(QtWidgets.QUndoCommand):
 
 	def undo(self):
 		""" set tree from prev data """
+
+
+def test_simple():
+	from tree.test.test_tree import midTree
+	widg = TreeWidget(None, tree=midTree)
+	return widg.show()
 
 
 def test():

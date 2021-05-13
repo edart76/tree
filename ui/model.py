@@ -1,8 +1,8 @@
 from PySide2 import QtGui, QtCore
 from tree import Tree
-from ui.delegate import TreeBranchItem, TreeValueItem, objRole
+from tree.ui.delegate import TreeBranchItem, TreeValueItem, objRole
 
-from ui.lib import dropActionDict
+from tree.ui.lib import dropActionDict
 
 class TreeModel(QtGui.QStandardItemModel):
 

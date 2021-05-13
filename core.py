@@ -22,6 +22,9 @@ from six import iteritems, string_types
 - Proper iterators, as with os.walk()
 - Figure out how to treat the modification signals -
 	stack frames vs consolidation
+		- Testing a compromise - individual branches only trigger their 
+		own signal, and those of root. Connect to branch if you want specific,
+		or root if you want view of entire tree
 """
 
 ####### THE MAIN EVENT ########
@@ -297,6 +300,9 @@ class TreeBase(object):
 	def __hash__(self):
 		""" hash is unique per object """
 		return hash(self.uuid)
+	
+	def __del__(self):
+		super(TreeBase, self).__del__()
 
 
 	def activateSignals(self):
@@ -321,9 +327,9 @@ class TreeBase(object):
 			"""
 			for i in self.signals:
 				i.clear()
-			self.valueChanged.connect(parent.valueChanged)
-			self.structureChanged.connect(parent.structureChanged)
-			self.nameChanged.connect(parent.nameChanged)
+			self.valueChanged.connect(parent.root.valueChanged)
+			self.structureChanged.connect(parent.root.structureChanged)
+			self.nameChanged.connect(parent.root.nameChanged)
 
 	def addChild(self, branch, index=None, force=False):
 		if branch in self: # same object
@@ -348,7 +354,8 @@ class TreeBase(object):
 		branch._setParent(self)
 
 		# emit signal
-		self.structureChanged(branch, self, self.StructureEvents.branchAdded)
+		self.structureChanged(branch, self,
+		                      self.StructureEvents.branchAdded)
 		return branch
 
 
